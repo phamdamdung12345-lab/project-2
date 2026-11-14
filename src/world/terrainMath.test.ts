@@ -13,6 +13,8 @@ import {
   getRiversideTrailZ,
   getSnowPassCenterZ,
   getLakeCausewayX,
+  getWestViaductZ,
+  getEastPromenadeZ,
   computeAcademyScale,
   getHinterlandGroundY,
   getFootbridgeY,
@@ -424,7 +426,84 @@ test('Flooded Academy Lake Causeway, Grand Stairway, and 2.6x->1.0x Dynamic Scal
   assert.ok(Math.abs(py - ACADEMY.forecourtY) < 0.05);
   assert.equal(getZoneAtPosition(-885, ACADEMY.forecourtY, 0), 'academy-grounds');
 
-  // Sealed Grand Cathedral Doors stop player cleanly at forecourtEndZ (-896)
-  const doorStop = resolveObstacleCollisions(0, ACADEMY.forecourtY, -910, 0.45, false);
+  // Sealed Grand Cathedral Doors stop player cleanly at forecourtEndZ (-906)
+  const doorStop = resolveObstacleCollisions(0, ACADEMY.forecourtY, -920, 0.45, false);
   assert.ok(doorStop.z >= ACADEMY.cathedralDoorZ);
+});
+
+test('Three-Way Academy Causeway Network (14m Central, West Cloister Viaduct, East Harbor Bastion) and Switchback Stairs connect continuously', () => {
+  // 1. Central 14m causeway width & open Outer Water-Gatehouse center passage
+  const edgeRight = resolveObstacleCollisions(6.2, ACADEMY.causewayY, -638, 0.45, false);
+  assert.equal(edgeRight.x, 6.2);
+  const waterGateClear = resolveObstacleCollisions(
+    getLakeCausewayX(ACADEMY.waterGateZ),
+    ACADEMY.causewayY,
+    ACADEMY.waterGateZ,
+    0.45,
+    false,
+  );
+  assert.equal(waterGateClear.z, ACADEMY.waterGateZ);
+
+  // 2. West Wing: Junction (4, -740) -> Curved Viaduct -> West Cloister Courtyard -> Ascent Stair -> Perimeter -> Forecourt
+  let py: number = ACADEMY.causewayY;
+  for (let x = 4; x >= -92; x -= 1.0) {
+    const vz = getWestViaductZ(x);
+    const h = sampleFloorHeight(x, py, vz);
+    assert.notEqual(h, null, `West Viaduct missing at x=${x}`);
+    assert.ok(Math.abs((h as number) - py) < 0.35);
+    py = h as number;
+  }
+  assert.ok(Math.abs(py - ACADEMY.westCloisterY) < 0.05);
+
+  for (let z = -760; z >= -844; z -= 1.0) {
+    const h = sampleFloorHeight(-106, py, z);
+    assert.notEqual(h, null, `West Cloister / Ascent stair missing at z=${z}`);
+    assert.ok(Math.abs((h as number) - py) < 0.4);
+    py = h as number;
+  }
+  assert.ok(Math.abs(py - ACADEMY.midLandingY) < 0.05);
+
+  for (let z = -852; z >= -874; z -= 0.5) {
+    const h = sampleFloorHeight(-59, py, z);
+    assert.notEqual(h, null, `West Upper Wing stair missing at z=${z}`);
+    assert.ok(Math.abs((h as number) - py) < 0.35);
+    py = h as number;
+  }
+  assert.ok(Math.abs(py - ACADEMY.forecourtY) < 0.05);
+
+  // 3. East Wing: Junction (8, -740) -> Promenade -> Harbor Rotunda -> Stepped Docks & Sky-Bridge -> Forecourt
+  py = ACADEMY.causewayY;
+  for (let x = 8; x <= 94; x += 1.0) {
+    const pz = getEastPromenadeZ(x);
+    const h = sampleFloorHeight(x, py, pz);
+    assert.notEqual(h, null, `East Promenade missing at x=${x}`);
+    assert.ok(Math.abs((h as number) - py) < 0.35);
+    py = h as number;
+  }
+  assert.ok(Math.abs(py - ACADEMY.eastBastionY) < 0.05);
+
+  // Stepped Harbor Dock descent
+  const dockLow = sampleFloorHeight(120, -13.5, -745);
+  assert.ok(dockLow !== null && dockLow < ACADEMY.eastBastionY && dockLow > ACADEMY.lakeWaterY);
+
+  // Sky-Bridge up to Academy East Rampart -> East Upper Wing Stair -> Forecourt
+  for (let z = -810; z >= -844; z -= 1.0) {
+    const h = sampleFloorHeight(112, py, z);
+    assert.notEqual(h, null, `East Sky-Bridge missing at z=${z}`);
+    assert.ok(Math.abs((h as number) - py) < 0.4);
+    py = h as number;
+  }
+  assert.ok(Math.abs(py - ACADEMY.midLandingY) < 0.05);
+
+  for (let z = -852; z >= -874; z -= 0.5) {
+    const h = sampleFloorHeight(59, py, z);
+    assert.notEqual(h, null, `East Upper Wing stair missing at z=${z}`);
+    assert.ok(Math.abs((h as number) - py) < 0.35);
+    py = h as number;
+  }
+  assert.ok(Math.abs(py - ACADEMY.forecourtY) < 0.05);
+
+  // 4. Eastern Harbor Watchtower solid collider blocks center while leaving perimeter walkable
+  const towerPush = resolveObstacleCollisions(138, ACADEMY.eastBastionY, -784, 0.45, false);
+  assert.ok(Math.hypot(towerPush.x - 138, towerPush.z - (-784)) >= 7.8);
 });

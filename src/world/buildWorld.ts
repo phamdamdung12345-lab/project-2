@@ -96,8 +96,9 @@ export function buildFantasyWorld(
       bumpMap: textures.mossyStone.bumpMap,
       bumpScale: 0.08,
       roughnessMap: textures.mossyStone.roughnessMap,
-      roughness: 0.88,
+      roughness: 0.78,
       metalness: 0.04,
+      envMapIntensity: 0.45,
     }),
   );
 
@@ -132,8 +133,9 @@ export function buildFantasyWorld(
       bumpMap: textures.gildedRoof.bumpMap,
       bumpScale: 0.05,
       roughnessMap: textures.gildedRoof.roughnessMap,
-      roughness: 0.42,
-      metalness: 0.68,
+      roughness: 0.22,
+      metalness: 0.9,
+      envMapIntensity: 1.12,
     }),
   );
 
@@ -171,9 +173,9 @@ export function buildFantasyWorld(
   const stainedGlassMat = track(
     new THREE.MeshStandardMaterial({
       color: 0xffb85c,
-      emissive: new THREE.Color(0xe68c2e),
-      emissiveIntensity: 1.55,
-      roughness: 0.25,
+      emissive: new THREE.Color(0xf08c22),
+      emissiveIntensity: 1.85,
+      roughness: 0.22,
       metalness: 0.1,
     }),
   );
@@ -584,7 +586,7 @@ export function buildFantasyWorld(
   }> = [];
 
   const ringCenterZ = -95;
-  // Inner mountain ring (r = 235..295m, pushed behind Citadel, extended Hinterland Woods, Academy & Hamlet)
+  // Inner mountain ring (r = 235..295m, pushed behind Citadel, extended Hinterland Woods & Hamlet, clear of Academy skyline)
   const innerCount = 44;
   for (let i = 0; i < innerCount; i++) {
     const angle = (i / innerCount) * Math.PI * 2 + (valleyHash(i * 13 + 3) - 0.5) * 0.06;
@@ -592,10 +594,12 @@ export function buildFantasyWorld(
     let mx = Math.sin(angle) * rad;
     let mz = ringCenterZ - Math.cos(angle) * rad;
     if (mz < -240 && mz > -1060 && mx > -310 && mx < 300) {
-      rad = Math.max(rad, 1020);
+      rad = Math.max(rad, 1280);
       mx = Math.sin(angle) * rad;
       mz = ringCenterZ - Math.cos(angle) * rad;
     }
+    // Keep northern Academy lake horizon 100% free of awkward conical mountain peaks while framing outer forest flanks
+    const blocksAcademySkyline = mz < -640 && Math.abs(mx) < 340;
 
     // Dip mountain height directly behind the Citadel & Spectral Great Tree so the tree silhouettes cleanly
     const inTreeCorridor = mz < -265 && mx > -48 && mx < 115;
@@ -606,18 +610,20 @@ export function buildFantasyWorld(
     // Cool slate-frost tint for northern Hinterland & western Snowy Valley foothills; warm dusk for Sanctuary ring
     const isCoolAlpine = mz < -340 || mx < -170;
 
-    mountainSpecs.push({
-      x: mx,
-      z: mz,
-      sx: wFactor,
-      sy: hFactor,
-      sz: wFactor * (0.85 + valleyHash(i * 13 + 23) * 0.35),
-      ry: valleyHash(i * 13 + 29) * Math.PI * 2,
-      hue: isCoolAlpine ? 0.56 + shade * 0.03 : 0.08 + shade * 0.03,
-      sat: isCoolAlpine ? 0.12 + shade * 0.06 : 0.14 + shade * 0.08,
-      light: isCoolAlpine ? 0.26 + shade * 0.14 : 0.16 + shade * 0.08,
-      isPeak: true,
-    });
+    if (!blocksAcademySkyline) {
+      mountainSpecs.push({
+        x: mx,
+        z: mz,
+        sx: wFactor,
+        sy: hFactor,
+        sz: wFactor * (0.85 + valleyHash(i * 13 + 23) * 0.35),
+        ry: valleyHash(i * 13 + 29) * Math.PI * 2,
+        hue: isCoolAlpine ? 0.56 + shade * 0.03 : 0.08 + shade * 0.03,
+        sat: isCoolAlpine ? 0.12 + shade * 0.06 : 0.14 + shade * 0.08,
+        light: isCoolAlpine ? 0.26 + shade * 0.14 : 0.16 + shade * 0.08,
+        isPeak: true,
+      });
+    }
 
     // Flanking shoulder ridge crag to close horizon gaps
     const rAngle = angle + Math.PI / innerCount;
@@ -625,26 +631,28 @@ export function buildFantasyWorld(
     let rx = Math.sin(rAngle) * rRad;
     let rz = ringCenterZ - Math.cos(rAngle) * rRad;
     if (rz < -240 && rz > -1060 && rx > -310 && rx < 300) {
-      rRad = Math.max(rRad, 1035);
+      rRad = Math.max(rRad, 1300);
       rx = Math.sin(rAngle) * rRad;
       rz = ringCenterZ - Math.cos(rAngle) * rRad;
     }
     const isCoolRidge = rz < -340 || rx < -170;
-    mountainSpecs.push({
-      x: rx,
-      z: rz,
-      sx: 1.2 + valleyHash(i * 17 + 31) * 0.65,
-      sy: (inTreeCorridor ? 0.55 : 0.95 + valleyHash(i * 17 + 37) * 0.85),
-      sz: 1.15 + valleyHash(i * 17 + 41) * 0.55,
-      ry: valleyHash(i * 17 + 43) * Math.PI * 2,
-      hue: isCoolRidge ? 0.56 + shade * 0.02 : 0.08 + shade * 0.02,
-      sat: isCoolRidge ? 0.1 + shade * 0.05 : 0.12 + shade * 0.06,
-      light: isCoolRidge ? 0.24 + shade * 0.12 : 0.14 + shade * 0.07,
-      isPeak: false,
-    });
+    if (!(rz < -640 && Math.abs(rx) < 340)) {
+      mountainSpecs.push({
+        x: rx,
+        z: rz,
+        sx: 1.2 + valleyHash(i * 17 + 31) * 0.65,
+        sy: inTreeCorridor ? 0.55 : 0.95 + valleyHash(i * 17 + 37) * 0.85,
+        sz: 1.15 + valleyHash(i * 17 + 41) * 0.55,
+        ry: valleyHash(i * 17 + 43) * Math.PI * 2,
+        hue: isCoolRidge ? 0.56 + shade * 0.02 : 0.08 + shade * 0.02,
+        sat: isCoolRidge ? 0.1 + shade * 0.05 : 0.12 + shade * 0.06,
+        light: isCoolRidge ? 0.24 + shade * 0.12 : 0.14 + shade * 0.07,
+        isPeak: false,
+      });
+    }
   }
 
-  // Outer colossal alpine skyline ring (r = 340..435m, 52 towering peaks)
+  // Outer colossal alpine skyline ring (r = 340..435m, 52 towering peaks, suppressed behind Academy skyline)
   const outerCount = 52;
   for (let i = 0; i < outerCount; i++) {
     const angle = (i / outerCount) * Math.PI * 2 + (valleyHash(i * 19 + 5) - 0.5) * 0.05;
@@ -652,10 +660,11 @@ export function buildFantasyWorld(
     let mx = Math.sin(angle) * rad;
     let mz = ringCenterZ - Math.cos(angle) * rad;
     if (mz < -240 && mz > -1060 && mx > -310 && mx < 300) {
-      rad = Math.max(rad, 1055);
+      rad = Math.max(rad, 1360);
       mx = Math.sin(angle) * rad;
       mz = ringCenterZ - Math.cos(angle) * rad;
     }
+    if (mz < -640 && Math.abs(mx) < 360) continue;
     const inTreeCorridor = mz < -310 && mx > -56 && mx < 120;
     const hFactor = inTreeCorridor ? 0.42 : 1.15 + valleyHash(i * 19 + 13) * 0.98;
     const wFactor = 1.15 + valleyHash(i * 19 + 17) * 0.85;
@@ -1431,8 +1440,9 @@ export function buildFantasyWorld(
       bumpMap: textures.flagstone.bumpMap,
       bumpScale: 0.04,
       roughnessMap: textures.flagstone.roughnessMap,
-      roughness: 0.22,
+      roughness: 0.36,
       metalness: 0.14,
+      envMapIntensity: 0.85,
     }),
   );
 
@@ -2007,11 +2017,14 @@ export function buildFantasyWorld(
   innerCryptDoorGroup.add(innerSealMedallion);
 
   const astralPortalRingMat = track(
-    new THREE.MeshBasicMaterial({
+    new THREE.MeshStandardMaterial({
       color: 0x9ab4ff,
+      emissive: new THREE.Color(0x7ca2ff),
+      emissiveIntensity: 2.1,
       transparent: true,
-      opacity: 0.72,
-      blending: THREE.AdditiveBlending,
+      opacity: 0.86,
+      roughness: 0.2,
+      metalness: 0.1,
       depthWrite: false,
     }),
   );

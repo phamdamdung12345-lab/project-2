@@ -16,13 +16,19 @@ export interface ExplorationHUDProps {
   gateOpened: boolean;
   isResting: boolean;
   freeCam: boolean;
+  pointerLocked: boolean;
   hudHidden: boolean;
+  bloomEnabled: boolean;
+  audioMuted: boolean;
   isDead: boolean;
   checkpointNotice: string | null;
   currentZone: ZoneId;
   onStart: () => void;
   onToggleHud: () => void;
   onToggleFreeCam: () => void;
+  onTogglePointerLock: () => void;
+  onToggleBloom: () => void;
+  onToggleAudioMute: () => void;
 }
 
 export const ExplorationHUD: React.FC<ExplorationHUDProps> = ({
@@ -39,13 +45,19 @@ export const ExplorationHUD: React.FC<ExplorationHUDProps> = ({
   gateOpened,
   isResting,
   freeCam,
+  pointerLocked,
   hudHidden,
+  bloomEnabled,
+  audioMuted,
   isDead,
   checkpointNotice,
   currentZone,
   onStart,
   onToggleHud,
   onToggleFreeCam,
+  onTogglePointerLock,
+  onToggleBloom,
+  onToggleAudioMute,
 }) => {
   const bannerInfo = activeBannerZone ? ZONES[activeBannerZone] : null;
 
@@ -96,7 +108,7 @@ export const ExplorationHUD: React.FC<ExplorationHUDProps> = ({
               Enter Sanctuary
             </button>
             <p className="font-serif-body text-sm tracking-[0.1em] text-[#bfb29d] text-center drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
-              WASD Move · Shift Sprint · Space Jump · Ctrl Dodge-Roll · Drag Orbit · C Photo Cam
+              WASD Move · Shift Sprint · Space Jump · Ctrl Dodge-Roll · Click / Y Mouse Look · C Photo Cam
             </p>
           </div>
         </div>
@@ -165,13 +177,32 @@ export const ExplorationHUD: React.FC<ExplorationHUDProps> = ({
               {ZONES[currentZone].title}
             </span>
           </div>
-          {freeCam && (
-            <div className="px-3.5 py-2 bg-[#120e0b]/80 border border-[#d4af6a]/45">
-              <span className="font-display text-xs tracking-[0.18em] text-[#e6c47e]">
-                FREE-ROAM PHOTO CAMERA · WASD FLY · C EXIT
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {freeCam && (
+              <div className="px-3.5 py-2 bg-[#120e0b]/80 border border-[#d4af6a]/45">
+                <span className="font-display text-xs tracking-[0.18em] text-[#e6c47e]">
+                  FREE-ROAM PHOTO CAMERA · WASD FLY · C EXIT
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              data-testid="pointer-lock-toggle"
+              onClick={onTogglePointerLock}
+              aria-label="Toggle Mouse Look"
+              className={`pointer-events-auto px-3.5 py-2 border font-display text-xs tracking-[0.18em] transition-colors cursor-pointer whitespace-nowrap ${
+                pointerLocked
+                  ? 'bg-[#d4af6a] text-[#14100c] border-[#f2d48f] shadow-[0_4px_18px_rgba(212,175,106,0.35)]'
+                  : realm === 'astral'
+                    ? 'bg-[#100e22]/82 text-[#d8e3ff] border-[#9bb4ff]/40 hover:border-[#c8d8ff]'
+                    : 'bg-[#120e0b]/80 text-[#dfd1b8] border-[#c8a25a]/30 hover:border-[#d4af6a]/70'
+              }`}
+            >
+              {pointerLocked
+                ? '[Y / ESC] MOUSE LOOK ACTIVE'
+                : '[Y / CLICK] MOUSE LOOK (ESC TO UNLOCK)'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -250,13 +281,39 @@ export const ExplorationHUD: React.FC<ExplorationHUDProps> = ({
           {!hudHidden ? (
             <div
               data-testid="bottom-hud"
-              className="pointer-events-auto flex flex-wrap items-center justify-center gap-3 px-4 py-2 bg-[#120e0b]/80 border border-[#c8a25a]/25 shadow-[0_6px_24px_rgba(0,0,0,0.6)]"
+              className="pointer-events-auto flex flex-wrap items-center justify-center gap-2.5 px-4 py-2 bg-[#120e0b]/80 border border-[#c8a25a]/25 shadow-[0_6px_24px_rgba(0,0,0,0.6)]"
             >
               <span className="font-serif-body text-xs tracking-wide text-[#b5a790] whitespace-nowrap">
-                WASD Move · Shift Sprint · Space Jump · Ctrl Roll · E Rest · Drag Orbit · Scroll Zoom
+                WASD Move · Shift Sprint · Space Jump · Ctrl Roll · E Rest · Y / Click Mouse Look · Scroll Zoom
               </span>
 
-              <div className="flex items-center gap-1.5 pl-2.5 border-l border-[#c8a25a]/20">
+              <div className="flex flex-wrap items-center justify-center gap-1.5 xl:pl-2.5 xl:border-l xl:border-[#c8a25a]/20">
+                <button
+                  type="button"
+                  data-testid="bloom-toggle"
+                  onClick={onToggleBloom}
+                  aria-label="Toggle Bloom"
+                  className={`font-display px-2.5 py-1 text-[11px] tracking-[0.14em] border transition-colors cursor-pointer whitespace-nowrap ${
+                    bloomEnabled
+                      ? 'text-[#efe3cc] bg-[#211912] border-[#d4af6a]/60 hover:border-[#f0cf88]'
+                      : 'text-[#8e8270] border-[#c8a25a]/20 hover:text-[#d8cbb4] hover:border-[#d4af6a]/50'
+                  }`}
+                >
+                  {bloomEnabled ? '[B] BLOOM ON' : '[B] BLOOM OFF'}
+                </button>
+                <button
+                  type="button"
+                  data-testid="audio-toggle"
+                  onClick={onToggleAudioMute}
+                  aria-label="Toggle Audio"
+                  className={`font-display px-2.5 py-1 text-[11px] tracking-[0.14em] border transition-colors cursor-pointer whitespace-nowrap ${
+                    !audioMuted
+                      ? 'text-[#efe3cc] bg-[#211912] border-[#d4af6a]/60 hover:border-[#f0cf88]'
+                      : 'text-[#8e8270] border-[#c8a25a]/20 hover:text-[#d8cbb4] hover:border-[#d4af6a]/50'
+                  }`}
+                >
+                  {audioMuted ? '[M] AUDIO OFF' : '[M] AUDIO ON'}
+                </button>
                 <button
                   type="button"
                   onClick={onToggleFreeCam}

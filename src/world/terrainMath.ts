@@ -73,17 +73,17 @@ export const ZONES: Record<ZoneId, ZoneInfo> = {
   'astral-sanctuary': {
     id: 'astral-sanctuary',
     title: 'ASTRAL ROYAL SANCTUARY',
-    subtitle: 'Grand Arrival Balcony & Erdtree Causeway',
+    subtitle: 'Grand Arrival Balcony & Royal Citadel Terrace',
   },
   'astral-sprawl': {
     id: 'astral-sprawl',
-    title: 'SPRAWL OF FALLEN GOLD',
-    subtitle: 'Gilded City & The Petrified Dragon Rampart',
+    title: 'GILDED ISLAND CAPITAL',
+    subtitle: 'Golden-Roofed City & Dark Stone Fortress Bridge',
   },
   'astral-aqueduct': {
     id: 'astral-aqueduct',
-    title: 'STARLIT NOKRON AQUEDUCTS',
-    subtitle: 'Eternal Basin Beneath the Celestial Nebula',
+    title: 'STARLIT SEA AQUEDUCTS',
+    subtitle: 'Coastal Cliffs & Eternal Ocean Horizon',
   },
 };
 
@@ -148,12 +148,24 @@ export const ACADEMY = {
   gateStepsEndZ: -610.0,
   causewayStartZ: -610.0,
   causewayStraightZ: -785.0,
+  causewayHalfW: 7.0,
   causewayY: -13.65,
+  waterGateZ: -652.0,
+  junctionZ: -740.0,
   midIslandCx: 11.4,
   midIslandCz: -700.0,
-  midIslandRadius: 10.6,
+  midIslandRadius: 13.5,
   bonfireX: 11.4,
   bonfireZ: -700.0,
+  westCloisterMinX: -148.0,
+  westCloisterMaxX: -92.0,
+  westCloisterMinZ: -812.0,
+  westCloisterMaxZ: -756.0,
+  westCloisterY: -11.5,
+  eastRotundaCx: 120.0,
+  eastRotundaCz: -784.0,
+  eastRotundaRadius: 28.0,
+  eastBastionY: -12.0,
   castleBaseX: 0,
   castleBaseY: -13.65,
   castleBaseZ: -820.0,
@@ -161,9 +173,9 @@ export const ACADEMY = {
   midLandingEndZ: -852.0,
   midLandingY: -3.65,
   upperStairEndZ: -874.0,
-  forecourtEndZ: -896.0,
+  forecourtEndZ: -906.0,
   forecourtY: 6.35,
-  cathedralDoorZ: -896.0,
+  cathedralDoorZ: -906.0,
   scaleFarDist: 220.0,
   scaleNearDist: 45.0,
   scaleFar: 2.6,
@@ -361,10 +373,36 @@ export function getLakeCausewayX(z: number): number {
 export function getLakeCausewayY(z: number): number {
   if (z >= ACADEMY.causewayStartZ) return ACADEMY.causewayY;
   const islandDist = Math.abs(z - ACADEMY.midIslandCz);
-  const islandLift = (1 - smoothstep(4.0, 12.0, islandDist)) * 0.15;
-  const ripple = Math.sin(z * 0.085) * 0.14;
+  const islandLift = (1 - smoothstep(4.0, 14.0, islandDist)) * 0.15;
+  const ripple = Math.sin(z * 0.085) * 0.12;
   const endFade = smoothstep(-782.0, -765.0, z);
   return ACADEMY.causewayY + ripple * endFade + islandLift;
+}
+
+/**
+ * Analytic curved centerline Z & elevation Y of the West Sunken Cloister & Aqueduct Viaduct (x: +4 -> -92).
+ */
+export function getWestViaductZ(x: number): number {
+  const u = smoothstep(4.0, -92.0, x);
+  return ACADEMY.junctionZ - 44.0 * u;
+}
+
+export function getWestViaductY(x: number): number {
+  const u = smoothstep(4.0, -92.0, x);
+  return ACADEMY.causewayY + (ACADEMY.westCloisterY - ACADEMY.causewayY) * u;
+}
+
+/**
+ * Analytic curved centerline Z & elevation Y of the East Astronomical Pier Promenade (x: +8 -> +94).
+ */
+export function getEastPromenadeZ(x: number): number {
+  const u = smoothstep(8.0, 94.0, x);
+  return ACADEMY.junctionZ - 44.0 * u;
+}
+
+export function getEastPromenadeY(x: number): number {
+  const u = smoothstep(8.0, 94.0, x);
+  return ACADEMY.causewayY + (ACADEMY.eastBastionY - ACADEMY.causewayY) * u;
 }
 
 /**
@@ -480,18 +518,53 @@ export const CITADEL_LINEAR_PLATFORMS: WalkableRect[] = [
   { minX: -6.0, maxX: 6.0, minZ: -292.0, maxZ: -286.0, yStart: -10.0, yEnd: -12.0, slopeAxis: 'z' },
   // Far-bank Outer Academy Gatehouse Plaza (-582 -> -602, y = -12.0)
   { minX: -12.5, maxX: 12.5, minZ: -602.5, maxZ: -581.5, yStart: -12.0, yEnd: -12.0 },
-  // Broad Steps Descending from Outer Gatehouse Plaza down onto the Flooded Lake Causeway (-602 -> -610)
-  { minX: -6.5, maxX: 6.5, minZ: -610.2, maxZ: -602.0, yStart: -12.0, yEnd: ACADEMY.causewayY, slopeAxis: 'z' },
-  // Straight Grand Approach to Academy Entrance Stairway (-785 -> -820)
-  { minX: -6.5, maxX: 6.5, minZ: -820.2, maxZ: -784.5, yStart: ACADEMY.causewayY, yEnd: ACADEMY.castleBaseY },
+  // Broad Steps Descending from Outer Gatehouse Plaza down onto the Widened Lake Causeway (-602 -> -610)
+  { minX: -7.0, maxX: 7.0, minZ: -610.2, maxZ: -602.0, yStart: -12.0, yEnd: ACADEMY.causewayY, slopeAxis: 'z' },
+  // Three-Way Causeway Junction Plaza (connects Central Causeway, West Viaduct, and East Promenade at z=-740)
+  { minX: -8.0, maxX: 20.0, minZ: -751.0, maxZ: -729.0, yStart: ACADEMY.causewayY, yEnd: ACADEMY.causewayY },
+  // Straight Grand Approach to Academy Entrance Stairway (-785 -> -820, 14m wide)
+  { minX: -7.0, maxX: 7.0, minZ: -820.2, maxZ: -784.5, yStart: ACADEMY.causewayY, yEnd: ACADEMY.castleBaseY },
+  // Front Lower Harbor Dock Connectors from Main Approach onto West/East Seawall Terraces (y=-13.65 -> -11.65)
+  { minX: -16.2, maxX: -6.8, minZ: -822.0, maxZ: -812.0, yStart: ACADEMY.castleBaseY, yEnd: -11.65, slopeAxis: 'x' },
+  { minX: 6.8, maxX: 16.2, minZ: -822.0, maxZ: -812.0, yStart: -11.65, yEnd: ACADEMY.castleBaseY, slopeAxis: 'x' },
+  // Lower Waterline Seawall Terraces & Switchback Staircases up to Mid-Tier Perimeter Promenade (-11.65 -> -3.65)
+  { minX: -86.0, maxX: -16.0, minZ: -842.0, maxZ: -820.0, yStart: -11.65, yEnd: -11.65 },
+  { minX: 16.0, maxX: 86.0, minZ: -842.0, maxZ: -820.0, yStart: -11.65, yEnd: -11.65 },
+  { minX: -84.0, maxX: -74.0, minZ: -844.0, maxZ: -820.0, yStart: -11.65, yEnd: ACADEMY.midLandingY, slopeAxis: 'z' },
+  { minX: 74.0, maxX: 84.0, minZ: -844.0, maxZ: -820.0, yStart: -11.65, yEnd: ACADEMY.midLandingY, slopeAxis: 'z' },
+  // West Wing: Flooded Western Cloister Courtyard & Ascent Staircase into Academy Left Terrace
+  {
+    minX: ACADEMY.westCloisterMinX,
+    maxX: ACADEMY.westCloisterMaxX,
+    minZ: ACADEMY.westCloisterMinZ,
+    maxZ: ACADEMY.westCloisterMaxZ,
+    yStart: ACADEMY.westCloisterY,
+    yEnd: ACADEMY.westCloisterY,
+  },
+  {
+    minX: -112.0,
+    maxX: -100.0,
+    minZ: -844.0,
+    maxZ: ACADEMY.westCloisterMinZ,
+    yStart: ACADEMY.westCloisterY,
+    yEnd: ACADEMY.midLandingY,
+    slopeAxis: 'z',
+  },
+  // East Wing: Stepped Harbor Docks & Elevated Arched Sky-Bridge into Academy Right Curtain Terrace
+  { minX: 106.0, maxX: 134.0, minZ: -758.5, maxZ: -744.0, yStart: -13.85, yEnd: ACADEMY.eastBastionY, slopeAxis: 'z' },
+  { minX: 106.0, maxX: 118.0, minZ: -844.0, maxZ: -810.0, yStart: ACADEMY.eastBastionY, yEnd: ACADEMY.midLandingY, slopeAxis: 'z' },
   // Academy Grand Lower Cascading Stairway (-820 -> -842, y = -13.65 -> -3.65)
   { minX: -7.0, maxX: 7.0, minZ: -842.0, maxZ: -820.0, yStart: ACADEMY.castleBaseY, yEnd: ACADEMY.midLandingY, slopeAxis: 'z' },
-  // Academy Mid-Stair Astrolabe Landing Terrace (-842 -> -852, y = -3.65)
+  // Academy Mid-Tier Perimeter Rampart Promenade & Central Astrolabe Landing (-844 -> -880, x: -118..+120, y = -3.65)
+  { minX: -118.0, maxX: -10.5, minZ: -880.0, maxZ: -844.0, yStart: ACADEMY.midLandingY, yEnd: ACADEMY.midLandingY },
   { minX: -11.0, maxX: 11.0, minZ: -852.0, maxZ: -842.0, yStart: ACADEMY.midLandingY, yEnd: ACADEMY.midLandingY },
-  // Academy Upper Grand Stairway (-852 -> -874, y = -3.65 -> +6.35)
+  { minX: 10.5, maxX: 120.0, minZ: -880.0, maxZ: -844.0, yStart: ACADEMY.midLandingY, yEnd: ACADEMY.midLandingY },
+  // Academy Upper Grand Stairway & Flanking Wing Switchback Stairways (-852 -> -874, y = -3.65 -> +6.35)
   { minX: -6.0, maxX: 6.0, minZ: -874.0, maxZ: -852.0, yStart: ACADEMY.midLandingY, yEnd: ACADEMY.forecourtY, slopeAxis: 'z' },
-  // Academy Grand Cathedral Forecourt Terrace (-874 -> -896, y = +6.35)
-  { minX: -14.0, maxX: 14.0, minZ: -896.0, maxZ: -874.0, yStart: ACADEMY.forecourtY, yEnd: ACADEMY.forecourtY },
+  { minX: -64.0, maxX: -54.0, minZ: -874.0, maxZ: -852.0, yStart: ACADEMY.midLandingY, yEnd: ACADEMY.forecourtY, slopeAxis: 'z' },
+  { minX: 54.0, maxX: 64.0, minZ: -874.0, maxZ: -852.0, yStart: ACADEMY.midLandingY, yEnd: ACADEMY.forecourtY, slopeAxis: 'z' },
+  // Widened Academy Grand Cathedral Forecourt & Wing Terraces (-874 -> -906, x: -76..+76, y = +6.35)
+  { minX: -76.0, maxX: 76.0, minZ: ACADEMY.forecourtEndZ, maxZ: -874.0, yStart: ACADEMY.forecourtY, yEnd: ACADEMY.forecourtY },
 ];
 
 const TUNNEL_CORRIDORS = [
@@ -610,7 +683,7 @@ export function getWorldColliders(): CircleCollider[] {
   colliders.push({ x: -8.2, yMin: -14, yMax: -4, z: -592.0, r: 0.9 });
   colliders.push({ x: 8.2, yMin: -14, yMax: -4, z: -592.0, r: 0.9 });
 
-  // Flooded Academy Lake Causeway: Mid-Lake Bonfire mound & Academy Forecourt braziers
+  // Flooded Academy Lake Causeway: Mid-Lake Bonfire mound, Outer Water-Gatehouse piers, Statues & Wing Landmarks
   colliders.push({
     x: ACADEMY.bonfireX,
     yMin: -16,
@@ -618,8 +691,31 @@ export function getWorldColliders(): CircleCollider[] {
     z: ACADEMY.bonfireZ,
     r: 1.15,
   });
-  colliders.push({ x: -7.5, yMin: 4, yMax: 12, z: -886.0, r: 0.9 });
-  colliders.push({ x: 7.5, yMin: 4, yMax: 12, z: -886.0, r: 0.9 });
+  const wgCx = getLakeCausewayX(ACADEMY.waterGateZ);
+  colliders.push({ x: wgCx - 6.6, yMin: -16, yMax: 12, z: ACADEMY.waterGateZ, r: 1.6 });
+  colliders.push({ x: wgCx + 6.6, yMin: -16, yMax: 12, z: ACADEMY.waterGateZ, r: 1.6 });
+  for (const sz of [-632.0, -674.0, -764.0, -800.0]) {
+    const scx = getLakeCausewayX(sz);
+    colliders.push({ x: scx - 5.9, yMin: -16, yMax: -4, z: sz, r: 1.0 });
+    colliders.push({ x: scx + 5.9, yMin: -16, yMax: -4, z: sz, r: 1.0 });
+  }
+  // West Cloister Courtyard: Gazebo center columns & raised tree planters (leaving 6m central & outer avenues open)
+  for (const [gx, gz] of [
+    [-136, -770],
+    [-104, -770],
+    [-136, -798],
+    [-104, -798],
+  ]) {
+    colliders.push({ x: gx, yMin: -14, yMax: 0, z: gz, r: 1.5 });
+  }
+  // East Harbor Rotunda: Coastal Watchtower (center 138, -784) & Center Astrolabe Sundial
+  colliders.push({ x: 138.0, yMin: -15, yMax: 42, z: -784.0, r: 7.4 });
+  colliders.push({ x: ACADEMY.eastRotundaCx, yMin: -14, yMax: -5, z: ACADEMY.eastRotundaCz, r: 1.75 });
+  // Academy Forecourt braziers & wing guardian statues
+  colliders.push({ x: -8.5, yMin: 4, yMax: 12, z: -892.0, r: 0.9 });
+  colliders.push({ x: 8.5, yMin: 4, yMax: 12, z: -892.0, r: 0.9 });
+  colliders.push({ x: -34.0, yMin: 4, yMax: 14, z: -892.0, r: 1.3 });
+  colliders.push({ x: 34.0, yMin: 4, yMax: 14, z: -892.0, r: 1.3 });
 
   // Snowy Valley Pass Gate stone piers & fused cliff shoulders (zero walk-around gap!)
   const passGateZ = getSnowPassCenterZ(HAMLET.passEndX);
@@ -894,15 +990,34 @@ export function getCandidateSurfaceHeights(x: number, z: number): number[] {
     }
   }
 
-  // Flooded Academy Lake Winding Causeway (-610 -> -785) & Mid-Lake Bonfire Island
+  // Flooded Academy Lake Widened Winding Causeway (-610 -> -785) & Mid-Lake Bonfire Island
   if (z <= -609.5 && z >= ACADEMY.causewayStraightZ - 0.5) {
     const cx = getLakeCausewayX(z);
-    if (Math.abs(x - cx) <= 4.4) {
+    if (Math.abs(x - cx) <= ACADEMY.causewayHalfW) {
       heights.push(getLakeCausewayY(z));
     }
   }
   if (Math.hypot(x - ACADEMY.midIslandCx, z - ACADEMY.midIslandCz) <= ACADEMY.midIslandRadius + 0.6) {
     heights.push(ACADEMY.causewayY + 0.15);
+  }
+
+  // West Wing Curved Two-Tier Viaduct (x: +4 -> -92)
+  if (x <= 4.5 && x >= -92.5) {
+    const vz = getWestViaductZ(x);
+    if (Math.abs(z - vz) <= 5.0) {
+      heights.push(getWestViaductY(x));
+    }
+  }
+
+  // East Wing Astronomical Pier Promenade (x: +8 -> +94) & Harbor Rotunda
+  if (x >= 7.5 && x <= 94.5) {
+    const pz = getEastPromenadeZ(x);
+    if (Math.abs(z - pz) <= 5.0) {
+      heights.push(getEastPromenadeY(x));
+    }
+  }
+  if (Math.hypot(x - ACADEMY.eastRotundaCx, z - ACADEMY.eastRotundaCz) <= ACADEMY.eastRotundaRadius + 0.6) {
+    heights.push(ACADEMY.eastBastionY);
   }
 
   return heights;
@@ -1054,25 +1169,60 @@ function clampWoodsPerimeter(x: number, z: number, r: number): { x: number; z: n
   // Outer Gatehouse doorway narrowing cleanly at z ∈ [-587.5, -583.0] (|x| <= 5.2 - r), widening onto Plaza [-602..-587.5]
   if (z < -582.0 && z >= -587.5 && Math.abs(x) <= 5.2 - r) return { x, z };
   if (z < -587.5 && z >= -602.0 && Math.abs(x) <= 12.0 - r) return { x, z };
-  if (z < -602.0 && z >= -610.0 && Math.abs(x) <= 6.2 - r) return { x, z };
+  if (z < -602.0 && z >= -610.0 && Math.abs(x) <= ACADEMY.causewayHalfW - r) return { x, z };
 
-  // 5B. Flooded Academy Lake Causeway (-610..-785) & Mid-Lake Bonfire Island
+  // 5B. Flooded Academy Lake Causeway (-610..-785), Junction Plaza & Mid-Lake Bonfire Island
   if (z < -610.0 && z >= ACADEMY.causewayStraightZ) {
     const cx = getLakeCausewayX(z);
-    if (Math.abs(x - cx) <= 4.1 - r) return { x, z };
+    if (Math.abs(x - cx) <= ACADEMY.causewayHalfW - 0.35 - r) return { x, z };
   }
+  if (z <= -729.0 && z >= -751.0 && x >= -8.0 + r && x <= 20.0 - r) return { x, z };
   const mdx = x - ACADEMY.midIslandCx;
   const mdz = z - ACADEMY.midIslandCz;
   if (mdx * mdx + mdz * mdz <= (ACADEMY.midIslandRadius - r) * (ACADEMY.midIslandRadius - r)) {
     return { x, z };
   }
 
-  // 5C. Straight Grand Approach & Academy Citadel Entrance Stairways + Cathedral Forecourt (-785..-895.2)
-  if (z < ACADEMY.causewayStraightZ && z >= -820.0 && Math.abs(x) <= 6.1 - r) return { x, z };
+  // 5B-West. Curved Viaduct, Flooded Western Cloister Courtyard & West Ascent Stair
+  if (x <= 4.0 && x >= -92.0 && Math.abs(z - getWestViaductZ(x)) <= 4.6 - r) return { x, z };
+  if (
+    x >= ACADEMY.westCloisterMinX + r &&
+    x <= ACADEMY.westCloisterMaxX - r &&
+    z >= ACADEMY.westCloisterMinZ + r &&
+    z <= ACADEMY.westCloisterMaxZ - r
+  ) {
+    return { x, z };
+  }
+  if (x >= -112.0 + r && x <= -100.0 - r && z >= -844.0 && z <= ACADEMY.westCloisterMinZ) {
+    return { x, z };
+  }
+
+  // 5B-East. East Promenade, Harbor Rotunda, Stepped Docks & Sky-Bridge
+  if (x >= 8.0 && x <= 94.0 && Math.abs(z - getEastPromenadeZ(x)) <= 4.6 - r) return { x, z };
+  const edx = x - ACADEMY.eastRotundaCx;
+  const edz = z - ACADEMY.eastRotundaCz;
+  if (edx * edx + edz * edz <= (ACADEMY.eastRotundaRadius - r) * (ACADEMY.eastRotundaRadius - r)) {
+    return { x, z };
+  }
+  if (x >= 106.0 + r && x <= 134.0 - r && z >= -758.5 && z <= -744.0 - r) return { x, z };
+  if (x >= 106.0 + r && x <= 118.0 - r && z >= -844.0 && z <= -810.0) return { x, z };
+
+  // 5C. Straight Grand Approach, Seawall Docks, Switchback Stairs, Perimeter Promenade & Widened Forecourt
+  if (z < ACADEMY.causewayStraightZ && z >= -820.0 && Math.abs(x) <= ACADEMY.causewayHalfW - 0.35 - r) {
+    return { x, z };
+  }
+  if (z <= -812.0 && z >= -844.0 && x >= -86.0 + r && x <= -6.8) return { x, z };
+  if (z <= -812.0 && z >= -844.0 && x >= 6.8 && x <= 86.0 - r) return { x, z };
   if (z < -820.0 && z >= ACADEMY.lowerStairEndZ && Math.abs(x) <= 6.6 - r) return { x, z };
-  if (z < ACADEMY.lowerStairEndZ && z >= ACADEMY.midLandingEndZ && Math.abs(x) <= 10.6 - r) return { x, z };
-  if (z < ACADEMY.midLandingEndZ && z >= ACADEMY.upperStairEndZ && Math.abs(x) <= 5.6 - r) return { x, z };
-  if (z < ACADEMY.upperStairEndZ && z >= ACADEMY.cathedralDoorZ + 0.8 + r && Math.abs(x) <= 13.4 - r) {
+  if (z <= ACADEMY.lowerStairEndZ && z >= -880.0 + r && x >= -118.0 + r && x <= 120.0 - r) {
+    if (z >= ACADEMY.midLandingEndZ && (Math.abs(x) <= 10.6 - r || z <= -844.0)) return { x, z };
+    // Upper stairways + forecourt zone (-852..-906)
+    if (Math.abs(x) <= 5.6 - r) return { x, z };
+    if (x >= -64.0 + r && x <= -54.0 - r) return { x, z };
+    if (x >= 54.0 + r && x <= 64.0 - r) return { x, z };
+    if (z >= -880.0 + r && z <= -844.0 && (x < -10.5 || x > 10.5)) return { x, z };
+  }
+  if (z < ACADEMY.upperStairEndZ && z >= ACADEMY.cathedralDoorZ + 0.8 + r && x >= -76.0 + r && x <= 76.0 - r) {
     return { x, z };
   }
 
@@ -1138,16 +1288,20 @@ function clampWoodsPerimeter(x: number, z: number, r: number): { x: number; z: n
     z: Math.max(-602.0, Math.min(-587.5, z)),
   });
   candidates.push({
-    x: Math.max(-(6.2 - r), Math.min(6.2 - r, x)),
+    x: Math.max(-(ACADEMY.causewayHalfW - r), Math.min(ACADEMY.causewayHalfW - r, x)),
     z: Math.max(-610.0, Math.min(-602.0, z)),
   });
 
-  // Flooded Academy Lake Causeway & Mid-Lake Island projections
+  // Flooded Academy Lake Causeway, Junction Plaza & Mid-Lake Island projections
   const clampedLakeZ = Math.max(ACADEMY.causewayStraightZ, Math.min(-610.0, z));
   const lakeCx = getLakeCausewayX(clampedLakeZ);
   candidates.push({
-    x: Math.max(lakeCx - (4.1 - r), Math.min(lakeCx + (4.1 - r), x)),
+    x: Math.max(lakeCx - (ACADEMY.causewayHalfW - 0.35 - r), Math.min(lakeCx + (ACADEMY.causewayHalfW - 0.35 - r), x)),
     z: clampedLakeZ,
+  });
+  candidates.push({
+    x: Math.max(-8.0 + r, Math.min(20.0 - r, x)),
+    z: Math.max(-751.0, Math.min(-729.0, z)),
   });
   const mDist = Math.hypot(mdx, mdz) || 1;
   const maxMR = ACADEMY.midIslandRadius - r;
@@ -1156,25 +1310,79 @@ function clampWoodsPerimeter(x: number, z: number, r: number): { x: number; z: n
     z: ACADEMY.midIslandCz + (mdz / mDist) * Math.min(mDist, maxMR),
   });
 
-  // Straight Approach & Academy Citadel Stairways + Forecourt projections
+  // West Wing projections
+  const clampedWestX = Math.max(-92.0, Math.min(4.0, x));
+  const wVz = getWestViaductZ(clampedWestX);
   candidates.push({
-    x: Math.max(-(6.1 - r), Math.min(6.1 - r, x)),
+    x: clampedWestX,
+    z: Math.max(wVz - (4.6 - r), Math.min(wVz + (4.6 - r), z)),
+  });
+  candidates.push({
+    x: Math.max(ACADEMY.westCloisterMinX + r, Math.min(ACADEMY.westCloisterMaxX - r, x)),
+    z: Math.max(ACADEMY.westCloisterMinZ + r, Math.min(ACADEMY.westCloisterMaxZ - r, z)),
+  });
+  candidates.push({
+    x: Math.max(-112.0 + r, Math.min(-100.0 - r, x)),
+    z: Math.max(-844.0, Math.min(ACADEMY.westCloisterMinZ, z)),
+  });
+
+  // East Wing projections
+  const clampedEastX = Math.max(8.0, Math.min(94.0, x));
+  const ePz = getEastPromenadeZ(clampedEastX);
+  candidates.push({
+    x: clampedEastX,
+    z: Math.max(ePz - (4.6 - r), Math.min(ePz + (4.6 - r), z)),
+  });
+  const eDist = Math.hypot(edx, edz) || 1;
+  const maxER = ACADEMY.eastRotundaRadius - r;
+  candidates.push({
+    x: ACADEMY.eastRotundaCx + (edx / eDist) * Math.min(eDist, maxER),
+    z: ACADEMY.eastRotundaCz + (edz / eDist) * Math.min(eDist, maxER),
+  });
+  candidates.push({
+    x: Math.max(106.0 + r, Math.min(134.0 - r, x)),
+    z: Math.max(-758.5, Math.min(-744.0 - r, z)),
+  });
+  candidates.push({
+    x: Math.max(106.0 + r, Math.min(118.0 - r, x)),
+    z: Math.max(-844.0, Math.min(-810.0, z)),
+  });
+
+  // Straight Approach, Seawall Docks, Perimeter Promenade & Academy Citadel Stairways + Forecourt projections
+  candidates.push({
+    x: Math.max(-(ACADEMY.causewayHalfW - 0.35 - r), Math.min(ACADEMY.causewayHalfW - 0.35 - r, x)),
     z: Math.max(-820.0, Math.min(ACADEMY.causewayStraightZ, z)),
+  });
+  candidates.push({
+    x: Math.max(-86.0 + r, Math.min(-6.8, x)),
+    z: Math.max(-842.0, Math.min(-812.0, z)),
+  });
+  candidates.push({
+    x: Math.max(6.8, Math.min(86.0 - r, x)),
+    z: Math.max(-842.0, Math.min(-812.0, z)),
   });
   candidates.push({
     x: Math.max(-(6.6 - r), Math.min(6.6 - r, x)),
     z: Math.max(ACADEMY.lowerStairEndZ, Math.min(-820.0, z)),
   });
   candidates.push({
-    x: Math.max(-(10.6 - r), Math.min(10.6 - r, x)),
-    z: Math.max(ACADEMY.midLandingEndZ, Math.min(ACADEMY.lowerStairEndZ, z)),
+    x: Math.max(-118.0 + r, Math.min(120.0 - r, x)),
+    z: Math.max(-880.0 + r, Math.min(ACADEMY.lowerStairEndZ, z)),
   });
   candidates.push({
     x: Math.max(-(5.6 - r), Math.min(5.6 - r, x)),
     z: Math.max(ACADEMY.upperStairEndZ, Math.min(ACADEMY.midLandingEndZ, z)),
   });
   candidates.push({
-    x: Math.max(-(13.4 - r), Math.min(13.4 - r, x)),
+    x: Math.max(-64.0 + r, Math.min(-54.0 - r, x)),
+    z: Math.max(ACADEMY.upperStairEndZ, Math.min(ACADEMY.midLandingEndZ, z)),
+  });
+  candidates.push({
+    x: Math.max(54.0 + r, Math.min(64.0 - r, x)),
+    z: Math.max(ACADEMY.upperStairEndZ, Math.min(ACADEMY.midLandingEndZ, z)),
+  });
+  candidates.push({
+    x: Math.max(-76.0 + r, Math.min(76.0 - r, x)),
     z: Math.max(ACADEMY.cathedralDoorZ + 0.8 + r, Math.min(ACADEMY.upperStairEndZ, z)),
   });
 

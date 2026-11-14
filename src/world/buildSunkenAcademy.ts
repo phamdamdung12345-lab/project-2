@@ -5,6 +5,10 @@ import {
   ACADEMY,
   getLakeCausewayX,
   getLakeCausewayY,
+  getWestViaductZ,
+  getWestViaductY,
+  getEastPromenadeZ,
+  getEastPromenadeY,
 } from './terrainMath';
 
 export interface SunkenAcademyParams {
@@ -60,7 +64,6 @@ function createVerticallyStriatedRockTexture(): {
     return seed / 4294967296;
   };
 
-  // Vertical basalt/slate striations & jagged fracture seams
   for (let i = 0; i < 220; i++) {
     const x = rand() * size;
     const w = 2 + rand() * 14;
@@ -76,7 +79,6 @@ function createVerticallyStriatedRockTexture(): {
     bCtx.fillRect(x, 0, w, size);
   }
 
-  // Sharp vertical dark cleavage cracks
   for (let i = 0; i < 110; i++) {
     let cx = rand() * size;
     let cy = 0;
@@ -158,7 +160,7 @@ function createWeatheredLimestoneTexture(): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2, 2);
+  tex.repeat.set(3, 3);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   return tex;
@@ -205,10 +207,17 @@ function createAstrolabeMedallionTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/**
- * Builds a single solid pointed Gothic arch frame (outer rectangle with lancet arch cutout)
- * for crisp InstancedMesh arcade walls and viaduct bays.
- */
+function scaleExtrudeUVs(geo: THREE.BufferGeometry, factor: number): THREE.BufferGeometry {
+  const uv = geo.attributes.uv;
+  if (uv) {
+    for (let i = 0; i < uv.count; i++) {
+      uv.setXY(i, uv.getX(i) * factor, uv.getY(i) * factor);
+    }
+    uv.needsUpdate = true;
+  }
+  return geo;
+}
+
 function createGothicBayGeometry(
   bayWidth: number,
   bayHeight: number,
@@ -245,12 +254,9 @@ function createGothicBayGeometry(
   });
   geo.translate(0, 0, -depth * 0.5);
   geo.computeVertexNormals();
-  return geo;
+  return scaleExtrudeUVs(geo, 0.08);
 }
 
-/**
- * Builds a pointed Gothic pediment gable front wall with recessed lancet arch cutout.
- */
 function createGableArchWallGeometry(
   width: number,
   eaveH: number,
@@ -289,12 +295,9 @@ function createGableArchWallGeometry(
   });
   geo.translate(0, 0, -depth * 0.5);
   geo.computeVertexNormals();
-  return geo;
+  return scaleExtrudeUVs(geo, 0.06);
 }
 
-/**
- * Builds a steep pitched slate roof prism spanning along Z (`length`) with width along X (`width`).
- */
 function createSteepRoofGeometry(width: number, height: number, length: number): THREE.BufferGeometry {
   const hw = width * 0.5;
   const shape = new THREE.Shape();
@@ -312,13 +315,9 @@ function createSteepRoofGeometry(width: number, height: number, length: number):
 export function buildSunkenAcademy({
   interiorGroup,
   textures,
-  stoneMat,
   flagstoneMat,
-  marbleMat,
   barkMat,
-  ironMat,
   dampMasonryMat,
-  arcaneSlateMat,
   soulCyanMat,
   amberLanternMat,
   track,
@@ -331,7 +330,7 @@ export function buildSunkenAcademy({
   const lanternFlames: THREE.Mesh[] = [];
 
   // =========================================================================
-  // 1. DEDICATED ARCHITECTURAL MATERIALS (Limestone, Slate-Blue, Charcoal Cliff, Gold & Teal)
+  // 1. ARCHITECTURAL PBR MATERIALS (Raya Lucaria Palette)
   // =========================================================================
   const rockTex = createVerticallyStriatedRockTexture();
   track(rockTex.map);
@@ -341,7 +340,7 @@ export function buildSunkenAcademy({
       color: 0xffffff,
       map: rockTex.map,
       bumpMap: rockTex.bumpMap,
-      bumpScale: 0.24,
+      bumpScale: 0.28,
       roughness: 0.94,
       metalness: 0.04,
     }),
@@ -355,16 +354,18 @@ export function buildSunkenAcademy({
       bumpMap: textures.mossyStone.bumpMap,
       bumpScale: 0.09,
       roughnessMap: textures.mossyStone.roughnessMap,
-      roughness: 0.88,
-      metalness: 0.03,
+      roughness: 0.78,
+      metalness: 0.04,
+      envMapIntensity: 0.45,
     }),
   );
 
   const carvedRibMat = track(
     new THREE.MeshStandardMaterial({
-      color: 0xbcb8aa,
+      color: 0xa6a296,
+      map: limestoneTex,
       bumpMap: textures.flagstone.bumpMap,
-      bumpScale: 0.05,
+      bumpScale: 0.06,
       roughness: 0.78,
       metalness: 0.05,
     }),
@@ -375,26 +376,27 @@ export function buildSunkenAcademy({
       color: 0x1d2b3b,
       bumpMap: textures.gildedRoof.bumpMap,
       bumpScale: 0.08,
-      roughness: 0.52,
-      metalness: 0.22,
+      roughness: 0.44,
+      metalness: 0.28,
+      envMapIntensity: 0.75,
     }),
   );
 
   const goldLancetMat = track(
     new THREE.MeshStandardMaterial({
       color: 0xf4b545,
-      emissive: new THREE.Color(0xd97e18),
-      emissiveIntensity: 1.45,
-      roughness: 0.25,
-      metalness: 0.04,
+      emissive: new THREE.Color(0xe68416),
+      emissiveIntensity: 1.85,
+      roughness: 0.22,
+      metalness: 0.05,
     }),
   );
 
   const roseGlassMat = track(
     new THREE.MeshStandardMaterial({
       color: 0xfbe08a,
-      emissive: new THREE.Color(0xe69a24),
-      emissiveIntensity: 1.55,
+      emissive: new THREE.Color(0xf09d24),
+      emissiveIntensity: 1.95,
       roughness: 0.2,
       metalness: 0.05,
     }),
@@ -426,6 +428,14 @@ export function buildSunkenAcademy({
     }),
   );
 
+  const cypressFoliageMat = track(
+    new THREE.MeshStandardMaterial({
+      color: 0x20322b,
+      roughness: 0.9,
+      metalness: 0.02,
+    }),
+  );
+
   const astrolabeTex = track(createAstrolabeMedallionTexture());
   const astrolabeMat = track(
     new THREE.MeshStandardMaterial({
@@ -437,16 +447,17 @@ export function buildSunkenAcademy({
   );
 
   // =========================================================================
-  // 2. TURQUOISE-TEAL FLOODED LAKE & EXPANSIVE CAMPUS TERRACES (-610..-1120)
+  // 2. BOUNDED SUNKEN ACADEMY LAKE BASIN & THREE-WAY CAUSEWAY NETWORK
   // =========================================================================
   const lakeUniforms = { uTime: { value: 0 } };
   const lakeWaterMat = track(
     new THREE.MeshStandardMaterial({
       color: 0x134b5f,
       emissive: new THREE.Color(0x0b3242),
-      emissiveIntensity: 0.85,
-      roughness: 0.1,
-      metalness: 0.58,
+      emissiveIntensity: 0.72,
+      roughness: 0.14,
+      metalness: 0.25,
+      envMapIntensity: 1.25,
     }),
   );
   lakeWaterMat.onBeforeCompile = (shader) => {
@@ -462,7 +473,7 @@ export function buildSunkenAcademy({
         '#include <begin_vertex>',
         `#include <begin_vertex>
          vLakePos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-         transformed.y += sin(vLakePos.x * 0.16 + uTime * 1.05) * 0.04 + cos(vLakePos.z * 0.21 - uTime * 0.85) * 0.04;`,
+         transformed.y += sin(vLakePos.x * 0.16 + uTime * 1.05) * 0.035 + cos(vLakePos.z * 0.21 - uTime * 0.85) * 0.035;`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -473,51 +484,159 @@ export function buildSunkenAcademy({
       )
       .replace(
         '#include <dithering_fragment>',
-        `float lW1 = sin(vLakePos.x * 0.28 + uTime * 1.2 + vLakePos.z * 0.17) * 0.5 + 0.5;
-         float lW2 = cos(vLakePos.x * 0.14 - vLakePos.z * 0.36 + uTime * 0.9) * 0.5 + 0.5;
-         float lGlint = smoothstep(0.62, 0.98, lW1 * lW2);
-         gl_FragColor.rgb += vec3(0.24, 0.54, 0.62) * lGlint * 0.68;
+        `float lBand1 = sin(vLakePos.z * 0.58 + sin(vLakePos.x * 0.09) * 2.4 - uTime * 1.15);
+         float lBand2 = cos(vLakePos.z * 0.95 - sin(vLakePos.x * 0.14 + uTime * 0.45) * 1.8 + uTime * 0.85);
+         float lRipple = smoothstep(0.45, 0.98, (lBand1 * 0.6 + lBand2 * 0.4) * 0.5 + 0.5);
+         gl_FragColor.rgb += vec3(0.14, 0.34, 0.42) * lRipple * 0.28;
          #include <dithering_fragment>`,
       );
   };
 
-  const lakePlane = new THREE.Mesh(track(new THREE.PlaneGeometry(780, 740, 48, 48)), lakeWaterMat);
-  lakePlane.rotation.x = -Math.PI / 2;
-  lakePlane.position.set(0, ACADEMY.lakeWaterY, -900.0);
+  // Strictly confine the Academy lake mesh inside the sunken crater basin north of the retaining wall (z <= -584.2)
+  const lakeBoundsAtZ = (z: number): [number, number] => {
+    const northU = Math.max(0, Math.min(1, (-584.2 - z) / 160.0));
+    const northEase = northU * northU * (3 - 2 * northU);
+    const rearU = Math.max(0, Math.min(1, (-1100.0 - z) / 160.0));
+    const rearEase = rearU * rearU * (3 - 2 * rearU);
+    const xMin = -194.0 - northEase * 84.0 + rearEase * 58.0; // -194 at wall -> -278 mid-lake -> -220 rear
+    const xMax = 166.0 + northEase * 112.0 - rearEase * 58.0; // +166 at wall -> +278 mid-lake -> +220 rear
+    return [xMin, xMax];
+  };
+
+  const lakeSegsX = 64;
+  const lakeSegsZ = 64;
+  const lakePositions: number[] = [];
+  const lakeNormals: number[] = [];
+  const lakeUvs: number[] = [];
+  const lakeIndices: number[] = [];
+  const zSouthWall = -584.2;
+  const zNorthRim = -1260.0;
+
+  for (let iz = 0; iz <= lakeSegsZ; iz++) {
+    const vz = iz / lakeSegsZ;
+    const wz = THREE.MathUtils.lerp(zSouthWall, zNorthRim, vz);
+    const [xMin, xMax] = lakeBoundsAtZ(wz);
+    for (let ix = 0; ix <= lakeSegsX; ix++) {
+      const ux = ix / lakeSegsX;
+      const wx = THREE.MathUtils.lerp(xMin, xMax, ux);
+      lakePositions.push(wx, 0, wz);
+      lakeNormals.push(0, 1, 0);
+      lakeUvs.push(ux, vz);
+    }
+  }
+  const lakeStride = lakeSegsX + 1;
+  for (let iz = 0; iz < lakeSegsZ; iz++) {
+    for (let ix = 0; ix < lakeSegsX; ix++) {
+      const a = iz * lakeStride + ix;
+      const b = a + 1;
+      const c = (iz + 1) * lakeStride + ix;
+      const d = c + 1;
+      lakeIndices.push(a, b, c, b, d, c);
+    }
+  }
+  const lakeGeo = track(new THREE.BufferGeometry());
+  lakeGeo.setAttribute('position', new THREE.Float32BufferAttribute(lakePositions, 3));
+  lakeGeo.setAttribute('normal', new THREE.Float32BufferAttribute(lakeNormals, 3));
+  lakeGeo.setAttribute('uv', new THREE.Float32BufferAttribute(lakeUvs, 2));
+  lakeGeo.setIndex(lakeIndices);
+  const lakePlane = new THREE.Mesh(lakeGeo, lakeWaterMat);
+  lakePlane.position.set(0, ACADEMY.lakeWaterY, 0);
   interiorGroup.add(lakePlane);
 
-  // Winding Sunken Cobblestone Causeway (-610 -> -820) — exact match with terrainMath.ts
-  const causewaySegs = 82;
-  const causewaySlabGeo = track(new THREE.BoxGeometry(8.4, 0.9, 3.05));
+  // Continuous Jagged Basalt Shoreline Cliffs & Retaining Seawall Rim framing the West, East & North Basin
+  const rimCliffGeo = track(new THREE.DodecahedronGeometry(16.0, 0));
+  const rimCliffSpecs: Array<{ x: number; y: number; z: number; sx: number; sy: number; sz: number; ry: number }> = [];
+  for (let i = 0; i <= 26; i++) {
+    const t = i / 26;
+    const wz = THREE.MathUtils.lerp(-592, -1255, t);
+    const [xMin, xMax] = lakeBoundsAtZ(wz);
+    const hVar = 1.0 + Math.sin(i * 1.9) * 0.35;
+    rimCliffSpecs.push({
+      x: xMin - 10.0,
+      y: ACADEMY.lakeWaterY + 9.0 * hVar,
+      z: wz,
+      sx: 1.35 + (i % 3) * 0.25,
+      sy: 1.55 * hVar,
+      sz: 1.65,
+      ry: i * 0.7,
+    });
+    rimCliffSpecs.push({
+      x: xMax + 10.0,
+      y: ACADEMY.lakeWaterY + 9.0 * hVar,
+      z: wz,
+      sx: 1.35 + ((i + 1) % 3) * 0.25,
+      sy: 1.55 * hVar,
+      sz: 1.65,
+      ry: -i * 0.65,
+    });
+  }
+  for (let i = 0; i <= 14; i++) {
+    const t = i / 14;
+    const wx = THREE.MathUtils.lerp(-220, 220, t);
+    const hVar = 1.15 + Math.cos(i * 1.5) * 0.35;
+    rimCliffSpecs.push({
+      x: wx,
+      y: ACADEMY.lakeWaterY + 11.0 * hVar,
+      z: -1264 - (1 - Math.abs(t - 0.5) * 2) * 16,
+      sx: 1.85,
+      sy: 1.75 * hVar,
+      sz: 1.4,
+      ry: i * 0.9,
+    });
+  }
+  const rimCliffsInst = new THREE.InstancedMesh(rimCliffGeo, striatedCliffMat, rimCliffSpecs.length);
+  rimCliffSpecs.forEach((rc, idx) => {
+    dummy.position.set(rc.x, rc.y, rc.z);
+    dummy.rotation.set((idx % 3) * 0.12, rc.ry, ((idx + 1) % 2) * 0.1);
+    dummy.scale.set(rc.sx, rc.sy, rc.sz);
+    dummy.updateMatrix();
+    rimCliffsInst.setMatrixAt(idx, dummy.matrix);
+  });
+  rimCliffsInst.instanceMatrix.needsUpdate = true;
+  rimCliffsInst.computeBoundingSphere();
+  interiorGroup.add(rimCliffsInst);
+
+  // -------------------------------------------------------------------------
+  // 2A. WIDENED 14m CENTRAL GRAND PROCESSIONAL BRIDGE (-610 -> -820)
+  // -------------------------------------------------------------------------
+  const causewaySegs = 84;
+  const causewaySlabGeo = track(new THREE.BoxGeometry(14.0, 1.2, 3.05));
   const causewaySlabs = addWalkable(new THREE.InstancedMesh(causewaySlabGeo, dampMasonryMat, causewaySegs));
   causewaySlabs.receiveShadow = true;
 
-  const parapetPostGeo = track(new THREE.BoxGeometry(0.55, 1.05, 0.65));
+  const parapetPostGeo = track(new THREE.BoxGeometry(0.62, 1.15, 0.72));
   const causewayParapets: Array<{ x: number; y: number; z: number; h: number }> = [];
-  const causewayLanterns: Array<[number, number, number]> = [];
+  const causewayLanterns: Array<[number, number, number, number]> = []; // [x, y, z, inwardSign]
 
   for (let i = 0; i < causewaySegs; i++) {
     const z = THREE.MathUtils.lerp(ACADEMY.causewayStartZ, ACADEMY.castleBaseZ, (i + 0.5) / causewaySegs);
     const cx = getLakeCausewayX(z);
     const cy = getLakeCausewayY(z);
-    dummy.position.set(cx, cy - 0.46, z);
+    dummy.position.set(cx, cy - 0.61, z);
     dummy.rotation.set(0, 0, 0);
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
     causewaySlabs.setMatrixAt(i, dummy.matrix);
 
-    if (i % 3 === 0 && Math.abs(z - ACADEMY.midIslandCz) > 9.5 && z > -811.0) {
-      const side = i % 2 === 0 ? -1 : 1;
-      causewayParapets.push({
-        x: cx + side * 4.05,
-        y: cy + 0.4,
-        z,
-        h: 0.75 + (i % 4) * 0.22,
-      });
-    }
-    if (i % 6 === 3 && Math.abs(z - ACADEMY.midIslandCz) > 9.0 && z > -808) {
-      const side = (i / 3) % 2 === 0 ? -1 : 1;
-      causewayLanterns.push([cx + side * 3.7, cy, z]);
+    const nearMidIsland = Math.abs(z - ACADEMY.midIslandCz) < 12.5;
+    const nearJunction = Math.abs(z - ACADEMY.junctionZ) < 12.5;
+    const nearFrontDocks = z <= -810.5;
+    if (!nearMidIsland && !nearJunction && !nearFrontDocks) {
+      if (i % 2 === 0) {
+        for (const side of [-1, 1]) {
+          causewayParapets.push({
+            x: cx + side * 6.68,
+            y: cy + 0.52,
+            z,
+            h: 0.85 + ((i + (side > 0 ? 1 : 0)) % 3) * 0.2,
+          });
+        }
+      }
+      if (i % 7 === 3) {
+        for (const side of [-1, 1]) {
+          causewayLanterns.push([cx + side * 6.1, cy, z, -side]);
+        }
+      }
     }
   }
   causewaySlabs.instanceMatrix.needsUpdate = true;
@@ -525,10 +644,403 @@ export function buildSunkenAcademy({
   causewaySlabs.computeBoundingSphere();
   interiorGroup.add(causewaySlabs);
 
+  // Three-Way Causeway Junction Plaza (connects Central, West Viaduct & East Promenade at z=-740)
+  const junctionDeck = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(28.0, 2.2, 22.0)), flagstoneMat));
+  junctionDeck.position.set(6.0, ACADEMY.causewayY - 1.11, ACADEMY.junctionZ);
+  junctionDeck.receiveShadow = true;
+  interiorGroup.add(junctionDeck);
+
+  // Mid-Lake Shrine Island (x = 11.4, z = -700, r = 13.5) & 6th Active Bonfire
+  const midIsland = addWalkable(
+    new THREE.Mesh(
+      track(new THREE.CylinderGeometry(ACADEMY.midIslandRadius, ACADEMY.midIslandRadius + 2.2, 1.6, 28)),
+      flagstoneMat,
+    ),
+  );
+  midIsland.position.set(ACADEMY.midIslandCx, ACADEMY.causewayY - 0.65, ACADEMY.midIslandCz);
+  midIsland.receiveShadow = true;
+  interiorGroup.add(midIsland);
+
+  const midIslandFlames = buildBonfireCluster(ACADEMY.bonfireX, ACADEMY.causewayY + 0.15, ACADEMY.bonfireZ);
+
+  const ruinIslandArchGeo = track(
+    scaleExtrudeUVs(
+      new THREE.ExtrudeGeometry(createArchShape(4.6, 6.2, 1.0), { depth: 1.3, bevelEnabled: false }),
+      0.14,
+    ),
+  );
+  ruinIslandArchGeo.translate(0, 0, -0.65);
+  for (const ang of [-1.75, -0.75, 0.35]) {
+    const rArch = new THREE.Mesh(ruinIslandArchGeo, limestoneMat);
+    rArch.position.set(
+      ACADEMY.midIslandCx + Math.cos(ang) * 12.2,
+      ACADEMY.causewayY - 0.1,
+      ACADEMY.midIslandCz + Math.sin(ang) * 12.2,
+    );
+    rArch.rotation.y = -ang + Math.PI / 2;
+    rArch.scale.setScalar(0.8);
+    interiorGroup.add(rArch);
+  }
+  for (const [lx, lz, dir] of [
+    [ACADEMY.midIslandCx - 6.8, ACADEMY.midIslandCz - 6.8, 1],
+    [ACADEMY.midIslandCx + 6.8, ACADEMY.midIslandCz + 6.8, -1],
+  ] as const) {
+    causewayLanterns.push([lx, ACADEMY.causewayY + 0.15, lz, dir]);
+  }
+
+  // Ornate Pointed-Arch Outer Water-Gatehouse straddling the Central Bridge at z = -652
+  const wgCx = getLakeCausewayX(ACADEMY.waterGateZ);
+  const wgCy = getLakeCausewayY(ACADEMY.waterGateZ);
+  const wgTangent = Math.atan2(
+    getLakeCausewayX(ACADEMY.waterGateZ - 2) - getLakeCausewayX(ACADEMY.waterGateZ + 2),
+    -4.0,
+  );
+  const waterGateGroup = new THREE.Group();
+  waterGateGroup.position.set(wgCx, wgCy, ACADEMY.waterGateZ);
+  waterGateGroup.rotation.y = -wgTangent;
+  interiorGroup.add(waterGateGroup);
+
+  const wgArchGeo = track(
+    scaleExtrudeUVs(
+      new THREE.ExtrudeGeometry(createArchShape(12.2, 16.5, 2.4), {
+        depth: 3.4,
+        bevelEnabled: true,
+        bevelSize: 0.1,
+        bevelThickness: 0.1,
+      }),
+      0.08,
+    ),
+  );
+  wgArchGeo.translate(0, 0, -1.7);
+  const wgArch = new THREE.Mesh(wgArchGeo, limestoneMat);
+  waterGateGroup.add(wgArch);
+
+  const wgGalleryBar = new THREE.Mesh(track(new THREE.BoxGeometry(17.5, 2.6, 3.8)), carvedRibMat);
+  wgGalleryBar.position.set(0, 17.8, 0);
+  waterGateGroup.add(wgGalleryBar);
+
+  for (const side of [-1, 1]) {
+    const wgPier = new THREE.Mesh(track(new THREE.BoxGeometry(3.4, 24.0, 4.4)), limestoneMat);
+    wgPier.position.set(side * 6.8, 11.2, 0);
+    waterGateGroup.add(wgPier);
+
+    const wgCap = new THREE.Mesh(track(new THREE.BoxGeometry(3.9, 1.0, 4.9)), carvedRibMat);
+    wgCap.position.set(side * 6.8, 23.2, 0);
+    waterGateGroup.add(wgCap);
+
+    const wgSpire = new THREE.Mesh(track(new THREE.ConeGeometry(2.3, 11.0, 4)), slateRoofMat);
+    wgSpire.position.set(side * 6.8, 29.2, 0);
+    wgSpire.rotation.y = Math.PI / 4;
+    waterGateGroup.add(wgSpire);
+  }
+
+  // Instanced Shrouded Scholar Statues on Square Plinths along Causeway, Forecourt & Wings
+  const plinthBaseGeo = track(new THREE.BoxGeometry(2.0, 2.0, 2.0));
+  plinthBaseGeo.translate(0, 1.0, 0);
+  const plinthCapGeo = track(new THREE.BoxGeometry(2.25, 0.34, 2.25));
+  plinthCapGeo.translate(0, 2.17, 0);
+  const sRobe = new THREE.CylinderGeometry(0.52, 0.82, 1.85, 8);
+  sRobe.translate(0, 3.25, 0);
+  const sTorso = new THREE.CylinderGeometry(0.42, 0.58, 1.35, 8);
+  sTorso.translate(0, 4.55, 0);
+  const sCowl = new THREE.ConeGeometry(0.4, 1.05, 7);
+  sCowl.translate(0, 5.45, 0.08);
+  const statueBodyGeo = track(mergeGeometries([sRobe, sTorso, sCowl])!);
+  sRobe.dispose();
+  sTorso.dispose();
+  sCowl.dispose();
+
+  const statuePlacements: Array<{ x: number; y: number; z: number; yaw: number; s: number }> = [];
+  for (const sz of [-632.0, -674.0, -764.0, -800.0]) {
+    const scx = getLakeCausewayX(sz);
+    const scy = getLakeCausewayY(sz);
+    for (const side of [-1, 1]) {
+      statuePlacements.push({ x: scx + side * 5.9, y: scy, z: sz, yaw: -side * Math.PI * 0.48, s: 0.92 });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 2B. WEST WING — SUNKEN CLOISTER & TWO-TIER CURVED AQUEDUCT VIADUCT
+  // -------------------------------------------------------------------------
+  const westViaductSegs = 28;
+  const wingDeckSegGeo = track(new THREE.BoxGeometry(4.4, 1.2, 10.0));
+  const westDeckInst = addWalkable(new THREE.InstancedMesh(wingDeckSegGeo, dampMasonryMat, westViaductSegs));
+  westDeckInst.receiveShadow = true;
+
+  const wingArchBayGeo = track(createGothicBayGeometry(6.8, 8.0, 4.6, 5.8, 3.0));
+  const westViaductBays: Array<{ x: number; y: number; z: number; ry: number }> = [];
+
+  for (let i = 0; i < westViaductSegs; i++) {
+    const t = (i + 0.5) / westViaductSegs;
+    const x = THREE.MathUtils.lerp(4.0, -92.0, t);
+    const z = getWestViaductZ(x);
+    const y = getWestViaductY(x);
+    const dz = getWestViaductZ(x - 1.0) - getWestViaductZ(x + 1.0);
+    const ry = -Math.atan2(dz, -2.0);
+
+    dummy.position.set(x, y - 0.62, z);
+    dummy.rotation.set(0, ry, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    westDeckInst.setMatrixAt(i, dummy.matrix);
+
+    if (i % 2 === 1 && i < westViaductSegs - 1) {
+      // Upper viaduct bay supporting roadway & lower semi-submerged lake arch tier
+      westViaductBays.push({ x, y: y - 8.6, z, ry });
+      westViaductBays.push({ x, y: ACADEMY.lakeWaterY - 4.2, z, ry });
+    }
+    if (i % 3 === 1 && i > 1 && i < westViaductSegs - 1) {
+      const nx = Math.sin(ry);
+      const nz = Math.cos(ry);
+      causewayParapets.push({ x: x + nx * 4.6, y: y + 0.5, z: z + nz * 4.6, h: 0.9 });
+      causewayParapets.push({ x: x - nx * 4.6, y: y + 0.5, z: z - nz * 4.6, h: 0.9 });
+    }
+    if (i % 6 === 3) {
+      const nx = Math.sin(ry);
+      const nz = Math.cos(ry);
+      causewayLanterns.push([x + nx * 4.3, y, z + nz * 4.3, -1]);
+      causewayLanterns.push([x - nx * 4.3, y, z - nz * 4.3, 1]);
+    }
+  }
+  westDeckInst.instanceMatrix.needsUpdate = true;
+  westDeckInst.computeBoundingBox();
+  westDeckInst.computeBoundingSphere();
+  interiorGroup.add(westDeckInst);
+
+  // Flooded Western Cloister Courtyard (x: -148..-92, z: -812..-756, y = -11.5)
+  const wcCenterX = (ACADEMY.westCloisterMinX + ACADEMY.westCloisterMaxX) * 0.5; // -120
+  const wcCenterZ = (ACADEMY.westCloisterMinZ + ACADEMY.westCloisterMaxZ) * 0.5; // -784
+  const wcDeck = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(56.4, 3.6, 56.4)), flagstoneMat));
+  wcDeck.position.set(wcCenterX, ACADEMY.westCloisterY - 1.82, wcCenterZ);
+  wcDeck.receiveShadow = true;
+  interiorGroup.add(wcDeck);
+
+  // 4 Shallow Reflective Water Basins inset cleanly into the 4 Cloister quadrants (flush stone curbs!)
+  const wcPoolGeo = track(new THREE.PlaneGeometry(16.5, 16.5));
+  const wcCurbGeo = track(new THREE.BoxGeometry(17.4, 0.24, 0.55));
+  for (const [qx, qz] of [
+    [-136, -770],
+    [-104, -770],
+    [-136, -798],
+    [-104, -798],
+  ]) {
+    const pool = new THREE.Mesh(wcPoolGeo, lakeWaterMat);
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(qx, ACADEMY.westCloisterY + 0.03, qz);
+    interiorGroup.add(pool);
+
+    // 4 Open-Air Ruined Stone Gazebos centered on each reflective pool quadrant
+    const gaz = new THREE.Group();
+    gaz.position.set(qx, ACADEMY.westCloisterY, qz);
+    interiorGroup.add(gaz);
+
+    const plinth = new THREE.Mesh(track(new THREE.CylinderGeometry(1.4, 1.6, 0.65, 8)), carvedRibMat);
+    plinth.position.y = 0.32;
+    gaz.add(plinth);
+    const colShaft = new THREE.Mesh(track(new THREE.CylinderGeometry(0.45, 0.6, 6.2, 8)), limestoneMat);
+    colShaft.position.y = 3.4;
+    gaz.add(colShaft);
+    const roof = new THREE.Mesh(track(new THREE.ConeGeometry(2.2, 3.2, 6)), slateRoofMat);
+    roof.position.y = 8.0;
+    gaz.add(roof);
+
+    for (let s = 0; s < 4; s++) {
+      const curb = new THREE.Mesh(wcCurbGeo, carvedRibMat);
+      curb.rotation.y = (s * Math.PI) / 2;
+      curb.position.set(qx + Math.sin((s * Math.PI) / 2) * 8.4, ACADEMY.westCloisterY + 0.12, qz + Math.cos((s * Math.PI) / 2) * 8.4);
+      interiorGroup.add(curb);
+    }
+  }
+
+  // Cloister Perimeter Open Colonnade Arcades along outer West & South Courtyard rims
+  for (let i = 0; i < 7; i++) {
+    const offset = -21.0 + i * 7.0;
+    westViaductBays.push({ x: ACADEMY.westCloisterMinX + 1.2, y: ACADEMY.westCloisterY, z: wcCenterZ + offset, ry: Math.PI / 2 });
+    if (i !== 3) {
+      westViaductBays.push({ x: wcCenterX + offset, y: ACADEMY.westCloisterMinZ + 1.2 < 0 ? ACADEMY.westCloisterY : ACADEMY.westCloisterY, z: ACADEMY.westCloisterMaxZ - 1.2, ry: 0 });
+    }
+  }
+
+  // Wide West Terrace Ascent Staircase climbing from Western Cloister Courtyard (-812 -> -844, y: -11.5 -> -3.65)
+  const buildWorldStairFlight = (
+    cx: number,
+    width: number,
+    zStart: number,
+    zEnd: number,
+    yStart: number,
+    yEnd: number,
+    steps: number,
+  ) => {
+    const len = Math.abs(zStart - zEnd);
+    const stepDepth = (len / steps) * 1.15;
+    const stepRise = Math.abs(yEnd - yStart) / steps;
+    const thick = Math.max(0.5, stepRise + 0.25);
+    const sGeo = track(new THREE.BoxGeometry(width, thick, stepDepth));
+    const sMesh = addWalkable(new THREE.InstancedMesh(sGeo, flagstoneMat, steps));
+    sMesh.receiveShadow = true;
+    for (let i = 0; i < steps; i++) {
+      const t = (i + 0.5) / steps;
+      const sz = THREE.MathUtils.lerp(zStart, zEnd, t);
+      const sy = THREE.MathUtils.lerp(yStart, yEnd, t) - thick * 0.5;
+      dummy.position.set(cx, sy, sz);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      sMesh.setMatrixAt(i, dummy.matrix);
+    }
+    sMesh.instanceMatrix.needsUpdate = true;
+    sMesh.computeBoundingBox();
+    sMesh.computeBoundingSphere();
+    interiorGroup.add(sMesh);
+  };
+
+  buildWorldStairFlight(-106.0, 12.0, ACADEMY.westCloisterMinZ, -844.0, ACADEMY.westCloisterY, ACADEMY.midLandingY, 34);
+  for (let i = 0; i < 4; i++) {
+    const sz = THREE.MathUtils.lerp(ACADEMY.westCloisterMinZ + 2, -842.0, i / 3);
+    const sy = THREE.MathUtils.lerp(ACADEMY.westCloisterY, ACADEMY.midLandingY, i / 3);
+    causewayLanterns.push([-111.5, sy, sz, 1]);
+    causewayLanterns.push([-100.5, sy, sz, -1]);
+    if (i > 0) {
+      westViaductBays.push({ x: -106.0, y: ACADEMY.lakeWaterY - 4.0, z: sz, ry: Math.PI / 2 });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 2C. EAST WING — ASTRONOMICAL PIER & HARBOR ROTUNDA BASTION
+  // -------------------------------------------------------------------------
+  const eastSegs = 28;
+  const eastDeckInst = addWalkable(new THREE.InstancedMesh(wingDeckSegGeo, dampMasonryMat, eastSegs));
+  eastDeckInst.receiveShadow = true;
+
+  for (let i = 0; i < eastSegs; i++) {
+    const t = (i + 0.5) / eastSegs;
+    const x = THREE.MathUtils.lerp(8.0, 94.0, t);
+    const z = getEastPromenadeZ(x);
+    const y = getEastPromenadeY(x);
+    const dz = getEastPromenadeZ(x + 1.0) - getEastPromenadeZ(x - 1.0);
+    const ry = -Math.atan2(dz, 2.0);
+
+    dummy.position.set(x, y - 0.62, z);
+    dummy.rotation.set(0, ry, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    eastDeckInst.setMatrixAt(i, dummy.matrix);
+
+    if (i % 2 === 1 && i < eastSegs - 1) {
+      westViaductBays.push({ x, y: y - 8.6, z, ry });
+    }
+    if (i % 3 === 1 && i > 1 && i < eastSegs - 1) {
+      const nx = Math.sin(ry);
+      const nz = Math.cos(ry);
+      causewayParapets.push({ x: x + nx * 4.6, y: y + 0.5, z: z + nz * 4.6, h: 0.9 });
+      causewayParapets.push({ x: x - nx * 4.6, y: y + 0.5, z: z - nz * 4.6, h: 0.9 });
+    }
+    if (i % 6 === 3) {
+      const nx = Math.sin(ry);
+      const nz = Math.cos(ry);
+      causewayLanterns.push([x + nx * 4.3, y, z + nz * 4.3, -1]);
+      causewayLanterns.push([x - nx * 4.3, y, z - nz * 4.3, 1]);
+    }
+  }
+  eastDeckInst.instanceMatrix.needsUpdate = true;
+  eastDeckInst.computeBoundingBox();
+  eastDeckInst.computeBoundingSphere();
+  interiorGroup.add(eastDeckInst);
+
+  // Instantiate shared wing aqueduct arch bays (West Viaduct + Cloister Arcade + East Promenade)
+  const wingBaysInst = new THREE.InstancedMesh(wingArchBayGeo, limestoneMat, westViaductBays.length);
+  westViaductBays.forEach((wb, idx) => {
+    dummy.position.set(wb.x, wb.y, wb.z);
+    dummy.rotation.set(0, wb.ry, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    wingBaysInst.setMatrixAt(idx, dummy.matrix);
+  });
+  wingBaysInst.instanceMatrix.needsUpdate = true;
+  wingBaysInst.computeBoundingSphere();
+  interiorGroup.add(wingBaysInst);
+
+  // Eastern Lakeside Bastion & Harbor Rotunda (center (120, -784), radius = 28m, y = -12.0)
+  const eastPlaza = addWalkable(
+    new THREE.Mesh(
+      track(new THREE.CylinderGeometry(ACADEMY.eastRotundaRadius, ACADEMY.eastRotundaRadius + 3.0, 3.8, 36)),
+      flagstoneMat,
+    ),
+  );
+  eastPlaza.position.set(ACADEMY.eastRotundaCx, ACADEMY.eastBastionY - 1.91, ACADEMY.eastRotundaCz);
+  eastPlaza.receiveShadow = true;
+  interiorGroup.add(eastPlaza);
+
+  const eastAstrolabeFloor = new THREE.Mesh(track(new THREE.CircleGeometry(18.0, 36)), astrolabeMat);
+  eastAstrolabeFloor.rotation.x = -Math.PI / 2;
+  eastAstrolabeFloor.position.set(ACADEMY.eastRotundaCx, ACADEMY.eastBastionY + 0.03, ACADEMY.eastRotundaCz);
+  interiorGroup.add(eastAstrolabeFloor);
+
+  // Central Astronomical Sundial Pedestal at Harbor Rotunda center (120, -784)
+  const sundialBase = new THREE.Mesh(track(new THREE.CylinderGeometry(1.4, 1.75, 1.8, 8)), carvedRibMat);
+  sundialBase.position.set(ACADEMY.eastRotundaCx, ACADEMY.eastBastionY + 0.9, ACADEMY.eastRotundaCz);
+  interiorGroup.add(sundialBase);
+  const sundialStem = new THREE.Mesh(track(new THREE.CylinderGeometry(0.16, 0.28, 1.35, 8)), blackIronMat);
+  sundialStem.position.set(ACADEMY.eastRotundaCx, ACADEMY.eastBastionY + 2.35, ACADEMY.eastRotundaCz);
+  interiorGroup.add(sundialStem);
+  const sundialRing = new THREE.Mesh(track(new THREE.TorusGeometry(1.1, 0.12, 8, 28)), goldLancetMat);
+  sundialRing.position.set(ACADEMY.eastRotundaCx, ACADEMY.eastBastionY + 2.95, ACADEMY.eastRotundaCz);
+  sundialRing.rotation.x = 0.55;
+  interiorGroup.add(sundialRing);
+  const sundialGnomon = new THREE.Mesh(track(new THREE.CylinderGeometry(0.05, 0.05, 2.5, 6)), blackIronMat);
+  sundialGnomon.position.set(ACADEMY.eastRotundaCx, ACADEMY.eastBastionY + 2.95, ACADEMY.eastRotundaCz);
+  sundialGnomon.rotation.x = -0.75;
+  interiorGroup.add(sundialGnomon);
+
+  // Stepped Harbor Docks descending south to the turquoise lake waterline (z: -758.5 -> -744, y: -12.0 -> -13.85)
+  buildWorldStairFlight(120.0, 28.0, -758.5, -744.0, ACADEMY.eastBastionY, -13.85, 10);
+  causewayLanterns.push([106.8, -13.8, -744.5, 1]);
+  causewayLanterns.push([133.2, -13.8, -744.5, -1]);
+
+  // Tall Octagonal Coastal Watchtower on outer East Rim ((138, -784), exterior only, r=7.4 collider)
+  const watchtowerGroup = new THREE.Group();
+  watchtowerGroup.position.set(138.0, ACADEMY.eastBastionY, -784.0);
+  interiorGroup.add(watchtowerGroup);
+
+  const wtPlinth = new THREE.Mesh(track(new THREE.CylinderGeometry(7.2, 7.8, 8.0, 8)), carvedRibMat);
+  wtPlinth.position.y = 4.0;
+  wtPlinth.rotation.y = Math.PI / 8;
+  watchtowerGroup.add(wtPlinth);
+  const wtShaft = new THREE.Mesh(track(new THREE.CylinderGeometry(6.0, 6.6, 38.0, 8)), limestoneMat);
+  wtShaft.position.y = 27.0;
+  wtShaft.rotation.y = Math.PI / 8;
+  watchtowerGroup.add(wtShaft);
+  const wtBelfry = new THREE.Mesh(track(new THREE.CylinderGeometry(6.8, 6.2, 4.5, 8)), carvedRibMat);
+  wtBelfry.position.y = 48.0;
+  wtBelfry.rotation.y = Math.PI / 8;
+  watchtowerGroup.add(wtBelfry);
+  const wtRoof = new THREE.Mesh(track(new THREE.ConeGeometry(6.9, 22.0, 8)), slateRoofMat);
+  wtRoof.position.y = 61.0;
+  wtRoof.rotation.y = Math.PI / 8;
+  watchtowerGroup.add(wtRoof);
+  const wtLancetGeo = track(new THREE.ShapeGeometry(createPointedWindowShape(1.4, 7.5)));
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const slit = new THREE.Mesh(wtLancetGeo, goldLancetMat);
+    slit.position.set(Math.sin(a) * 5.95, 32.0, Math.cos(a) * 5.95);
+    slit.rotation.y = a;
+    watchtowerGroup.add(slit);
+  }
+
+  // Elevated Arched Sky-Bridge linking Harbor Rotunda into Academy East Rampart (-810 -> -844)
+  buildWorldStairFlight(112.0, 12.0, -810.0, -844.0, ACADEMY.eastBastionY, ACADEMY.midLandingY, 34);
+  for (let i = 0; i < 4; i++) {
+    const sz = THREE.MathUtils.lerp(-812.0, -842.0, i / 3);
+    const sy = THREE.MathUtils.lerp(ACADEMY.eastBastionY, ACADEMY.midLandingY, i / 3);
+    causewayLanterns.push([106.5, sy, sz, 1]);
+    causewayLanterns.push([117.5, sy, sz, -1]);
+  }
+
+  // Instanced Causeway + Wing Parapet Posts & Raven/Gargoyle Lampposts
   const parapetInst = new THREE.InstancedMesh(parapetPostGeo, limestoneMat, causewayParapets.length);
   causewayParapets.forEach((p, idx) => {
     dummy.position.set(p.x, p.y, p.z);
-    dummy.rotation.set(0, (idx % 3 - 1) * 0.08, 0);
+    dummy.rotation.set(0, ((idx % 3) - 1) * 0.08, 0);
     dummy.scale.set(1, p.h, 1);
     dummy.updateMatrix();
     parapetInst.setMatrixAt(idx, dummy.matrix);
@@ -537,269 +1049,17 @@ export function buildSunkenAcademy({
   parapetInst.computeBoundingSphere();
   interiorGroup.add(parapetInst);
 
-  // Mid-Lake Shrine Island (x = 11.4, z = -700) & 6th Active Bonfire
-  const midIsland = addWalkable(
-    new THREE.Mesh(
-      track(new THREE.CylinderGeometry(ACADEMY.midIslandRadius, ACADEMY.midIslandRadius + 1.6, 1.4, 24)),
-      flagstoneMat,
-    ),
-  );
-  midIsland.position.set(ACADEMY.midIslandCx, ACADEMY.causewayY - 0.55, ACADEMY.midIslandCz);
-  midIsland.receiveShadow = true;
-  interiorGroup.add(midIsland);
-
-  const midIslandFlames = buildBonfireCluster(ACADEMY.bonfireX, ACADEMY.causewayY + 0.15, ACADEMY.bonfireZ);
-
-  const ruinIslandArchGeo = track(
-    new THREE.ExtrudeGeometry(createArchShape(4.8, 6.2, 1.1), { depth: 1.4, bevelEnabled: false }),
-  );
-  ruinIslandArchGeo.translate(0, 0, -0.7);
-  // Frame the north/east rim of the island so approach & spawn sightlines to the bonfire stay wide open
-  for (const ang of [-1.25, -0.25, 0.75]) {
-    const rArch = new THREE.Mesh(ruinIslandArchGeo, limestoneMat);
-    rArch.position.set(
-      ACADEMY.midIslandCx + Math.cos(ang) * 8.6,
-      ACADEMY.causewayY - 0.1,
-      ACADEMY.midIslandCz + Math.sin(ang) * 8.6,
-    );
-    rArch.rotation.y = -ang + Math.PI / 2;
-    interiorGroup.add(rArch);
-  }
-  for (const [lx, lz] of [
-    [ACADEMY.midIslandCx - 4.8, ACADEMY.midIslandCz - 5.2],
-    [ACADEMY.midIslandCx + 4.8, ACADEMY.midIslandCz + 5.2],
-  ]) {
-    causewayLanterns.push([lx, ACADEMY.causewayY + 0.15, lz]);
-  }
-
-  // Instanced Campus Lampposts along causeway (dark iron + warm amber lantern cages)
-  const gPostGeo = track(new THREE.CylinderGeometry(0.14, 0.22, 2.9, 6));
-  gPostGeo.translate(0, 1.45, 0);
-  const gCapGeo = track(new THREE.ConeGeometry(0.42, 0.5, 6));
-  gCapGeo.translate(0, 3.35, 0);
-  const gOrbGeo = track(new THREE.OctahedronGeometry(0.24, 0));
-  gOrbGeo.translate(0, 2.9, 0);
-
-  const lakeLPosts = new THREE.InstancedMesh(gPostGeo, blackIronMat, causewayLanterns.length);
-  const lakeLCaps = new THREE.InstancedMesh(gCapGeo, blackIronMat, causewayLanterns.length);
-  const lakeLOrbs = new THREE.InstancedMesh(gOrbGeo, amberLanternMat, causewayLanterns.length);
-  causewayLanterns.forEach(([lx, ly, lz], idx) => {
-    dummy.position.set(lx, ly, lz);
-    dummy.rotation.set(0, idx * 0.5, 0);
-    dummy.scale.set(1, 1, 1);
-    dummy.updateMatrix();
-    lakeLPosts.setMatrixAt(idx, dummy.matrix);
-    lakeLCaps.setMatrixAt(idx, dummy.matrix);
-    lakeLOrbs.setMatrixAt(idx, dummy.matrix);
-  });
-  lakeLPosts.instanceMatrix.needsUpdate = true;
-  lakeLCaps.instanceMatrix.needsUpdate = true;
-  lakeLOrbs.instanceMatrix.needsUpdate = true;
-  lakeLPosts.computeBoundingSphere();
-  lakeLCaps.computeBoundingSphere();
-  lakeLOrbs.computeBoundingSphere();
-  interiorGroup.add(lakeLPosts, lakeLCaps, lakeLOrbs);
-
   // =========================================================================
-  // 2B. EXPANSIVE FLOODED CAMPUS TERRACES, SUNKEN PLAZAS & BROKEN COLONNADES
-  // =========================================================================
-  // Multi-level half-submerged stone plazas & secondary causeway spurs flanking the approach
-  const terraceSpecs: Array<{ x: number; y: number; z: number; w: number; d: number; ry: number }> = [
-    // East & West Outer Campus Half-Submerged Plazas near Outer Gate (-625..-665)
-    { x: -24.0, y: ACADEMY.lakeWaterY + 0.12, z: -632.0, w: 26.0, d: 22.0, ry: 0.08 },
-    { x: 26.0, y: ACADEMY.lakeWaterY + 0.18, z: -636.0, w: 28.0, d: 24.0, ry: -0.06 },
-    // Mid-Lake Sunken Quadrangles & Broken Pier Spurs (-675..-755)
-    { x: -28.0, y: ACADEMY.lakeWaterY + 0.08, z: -688.0, w: 24.0, d: 28.0, ry: 0.12 },
-    { x: 34.0, y: ACADEMY.lakeWaterY + 0.25, z: -702.0, w: 22.0, d: 26.0, ry: -0.1 },
-    { x: -22.0, y: ACADEMY.lakeWaterY + 0.35, z: -746.0, w: 26.0, d: 22.0, ry: 0.04 },
-    { x: 26.0, y: ACADEMY.lakeWaterY + 0.28, z: -754.0, w: 24.0, d: 24.0, ry: -0.05 },
-    // Lower Flooded Courtyard Flanking Terraces near Academy Base (-782..-808)
-    { x: -25.0, y: ACADEMY.lakeWaterY + 0.42, z: -792.0, w: 22.0, d: 24.0, ry: 0.0 },
-    { x: 25.0, y: ACADEMY.lakeWaterY + 0.42, z: -792.0, w: 22.0, d: 24.0, ry: 0.0 },
-  ];
-
-  const plazaSlabGeo = track(new THREE.BoxGeometry(1, 2.2, 1));
-  const campusPlazas = new THREE.InstancedMesh(plazaSlabGeo, limestoneMat, terraceSpecs.length);
-  const plazaTrimGeo = track(new THREE.BoxGeometry(1.04, 0.28, 1.04));
-  const campusPlazaTrims = new THREE.InstancedMesh(plazaTrimGeo, carvedRibMat, terraceSpecs.length);
-  campusPlazas.receiveShadow = true;
-
-  terraceSpecs.forEach((ts, idx) => {
-    dummy.position.set(ts.x, ts.y - 1.1, ts.z);
-    dummy.rotation.set(0, ts.ry, 0);
-    dummy.scale.set(ts.w, 1, ts.d);
-    dummy.updateMatrix();
-    campusPlazas.setMatrixAt(idx, dummy.matrix);
-
-    dummy.position.set(ts.x, ts.y - 0.14, ts.z);
-    dummy.scale.set(ts.w, 1, ts.d);
-    dummy.updateMatrix();
-    campusPlazaTrims.setMatrixAt(idx, dummy.matrix);
-  });
-  campusPlazas.instanceMatrix.needsUpdate = true;
-  campusPlazaTrims.instanceMatrix.needsUpdate = true;
-  campusPlazas.computeBoundingSphere();
-  campusPlazaTrims.computeBoundingSphere();
-  interiorGroup.add(campusPlazas, campusPlazaTrims);
-
-  // Sunken Stairways & Broken Colonnades rising from the half-submerged plazas
-  const colonnadeBayGeo = track(createGothicBayGeometry(5.6, 8.6, 3.6, 6.8, 1.4));
-  const colonnadeTransforms: Array<{ x: number; y: number; z: number; ry: number; s: number }> = [];
-  for (const [cx, cz, ry, count] of [
-    [-25.0, -626.0, 0.08, 4],
-    [27.0, -630.0, -0.06, 4],
-    [-29.0, -682.0, 0.12, 4],
-    [35.0, -696.0, -0.1, 3],
-    [-23.0, -740.0, 0.04, 4],
-    [27.0, -748.0, -0.05, 4],
-    [-24.0, -784.0, 0.0, 3],
-    [24.0, -784.0, 0.0, 3],
-  ] as const) {
-    for (let b = 0; b < count; b++) {
-      if ((b + count) % 5 === 4) continue; // natural broken gap
-      const dx = Math.sin(ry) * (b * 5.6);
-      const dz = -Math.cos(ry) * (b * 5.6);
-      colonnadeTransforms.push({
-        x: cx + dx,
-        y: ACADEMY.lakeWaterY + 0.15,
-        z: cz + dz,
-        ry: ry + Math.PI / 2,
-        s: 0.95 + (b % 2) * 0.08,
-      });
-    }
-  }
-  const campusColonnades = new THREE.InstancedMesh(colonnadeBayGeo, limestoneMat, colonnadeTransforms.length);
-  colonnadeTransforms.forEach((ct, idx) => {
-    dummy.position.set(ct.x, ct.y, ct.z);
-    dummy.rotation.set(0, ct.ry, 0);
-    dummy.scale.setScalar(ct.s);
-    dummy.updateMatrix();
-    campusColonnades.setMatrixAt(idx, dummy.matrix);
-  });
-  campusColonnades.instanceMatrix.needsUpdate = true;
-  campusColonnades.computeBoundingSphere();
-  interiorGroup.add(campusColonnades);
-
-  // Sunken Stone Stairways dipping directly into the turquoise lake waters from the plazas
-  const sunkenStepGeo = track(new THREE.BoxGeometry(6.8, 0.45, 1.1));
-  const sunkenStepCoords: Array<{ x: number; y: number; z: number; ry: number }> = [];
-  for (const [sx, sz, sry] of [
-    [-12.0, -632.0, Math.PI / 2],
-    [13.0, -636.0, -Math.PI / 2],
-    [-16.0, -688.0, Math.PI / 2],
-    [-11.0, -746.0, Math.PI / 2],
-    [14.0, -754.0, -Math.PI / 2],
-    [-14.5, -792.0, Math.PI / 2],
-    [14.5, -792.0, -Math.PI / 2],
-  ]) {
-    for (let st = 0; st < 6; st++) {
-      const fwdX = Math.sin(sry) * (st * 0.95);
-      const fwdZ = Math.cos(sry) * (st * 0.95);
-      sunkenStepCoords.push({
-        x: sx + fwdX,
-        y: ACADEMY.lakeWaterY + 0.22 - st * 0.28,
-        z: sz + fwdZ,
-        ry: sry,
-      });
-    }
-  }
-  const sunkenStairsInst = new THREE.InstancedMesh(sunkenStepGeo, flagstoneMat, sunkenStepCoords.length);
-  sunkenStepCoords.forEach((ss, idx) => {
-    dummy.position.set(ss.x, ss.y, ss.z);
-    dummy.rotation.set(0, ss.ry, 0);
-    dummy.scale.set(1, 1, 1);
-    dummy.updateMatrix();
-    sunkenStairsInst.setMatrixAt(idx, dummy.matrix);
-  });
-  sunkenStairsInst.instanceMatrix.needsUpdate = true;
-  sunkenStairsInst.computeBoundingSphere();
-  interiorGroup.add(sunkenStairsInst);
-
-  // =========================================================================
-  // 2C. TILTED & PARTIALLY SUBMERGED SUNKEN CASTLE RUINS IN DISTANT LAKE (15°–35° TILT)
-  // =========================================================================
-  // Composite multi-bay broken arched viaduct spans emerging from the lake at 15–35° angles
-  const sunkenSpanBay = createGothicBayGeometry(6.8, 11.5, 4.4, 8.2, 2.2);
-  const sunkenSpanB1 = sunkenSpanBay.clone();
-  sunkenSpanB1.translate(-6.8, 0, 0);
-  const sunkenSpanB2 = sunkenSpanBay.clone();
-  const sunkenSpanB3 = sunkenSpanBay.clone();
-  sunkenSpanB3.translate(6.8, 0, 0);
-  const tiltedViaductGeo = track(mergeGeometries([sunkenSpanB1, sunkenSpanB2, sunkenSpanB3])!);
-  sunkenSpanBay.dispose();
-  sunkenSpanB1.dispose();
-  sunkenSpanB2.dispose();
-  sunkenSpanB3.dispose();
-
-  const sunkenViaductSpecs: Array<{ x: number; z: number; ry: number; tiltX: number; tiltZ: number; s: number }> = [
-    // Mid-lake foreground tilted arches clearly visible from Outer Gatehouse & Causeway
-    { x: -38, z: -648, ry: 0.36, tiltX: 0.28, tiltZ: -0.34, s: 1.12 },
-    { x: 42, z: -658, ry: -0.42, tiltX: -0.26, tiltZ: 0.36, s: 1.18 },
-    { x: -56, z: -708, ry: 0.62, tiltX: 0.34, tiltZ: -0.28, s: 1.28 },
-    { x: 58, z: -724, ry: -0.55, tiltX: -0.32, tiltZ: 0.38, s: 1.32 },
-    // Outer & deep lake tilted ruins
-    { x: -96, z: -745, ry: 0.85, tiltX: 0.42, tiltZ: 0.26, s: 1.45 },
-    { x: 92, z: -762, ry: -0.78, tiltX: -0.36, tiltZ: -0.44, s: 1.4 },
-    { x: -135, z: -830, ry: 0.32, tiltX: 0.48, tiltZ: -0.31, s: 1.6 },
-    { x: 138, z: -845, ry: -0.35, tiltX: 0.38, tiltZ: 0.45, s: 1.55 },
-    { x: -115, z: -965, ry: 1.1, tiltX: -0.44, tiltZ: 0.32, s: 1.7 },
-    { x: 122, z: -980, ry: -0.92, tiltX: 0.36, tiltZ: -0.48, s: 1.75 },
-  ];
-  const sunkenViaducts = new THREE.InstancedMesh(tiltedViaductGeo, limestoneMat, sunkenViaductSpecs.length);
-  sunkenViaductSpecs.forEach((sv, idx) => {
-    dummy.position.set(sv.x, ACADEMY.lakeWaterY - 2.2, sv.z);
-    dummy.rotation.set(sv.tiltX, sv.ry, sv.tiltZ);
-    dummy.scale.setScalar(sv.s);
-    dummy.updateMatrix();
-    sunkenViaducts.setMatrixAt(idx, dummy.matrix);
-  });
-  sunkenViaducts.instanceMatrix.needsUpdate = true;
-  sunkenViaducts.computeBoundingSphere();
-  interiorGroup.add(sunkenViaducts);
-
-  // Leaning Gothic Spires & Fractured Towers jutting from the misty turquoise lake (18°–35°)
-  const ruinTowerShaftGeo = track(new THREE.CylinderGeometry(2.6, 3.3, 24.0, 8));
-  ruinTowerShaftGeo.translate(0, 12.0, 0);
-  const ruinTowerRoofGeo = track(new THREE.ConeGeometry(3.4, 14.0, 8));
-  ruinTowerRoofGeo.translate(0, 31.0, 0);
-  const sunkenSpireSpecs: Array<{ x: number; z: number; ry: number; tiltX: number; tiltZ: number; s: number }> = [
-    { x: -46, z: -678, ry: 0.3, tiltX: 0.32, tiltZ: 0.28, s: 1.05 },
-    { x: 48, z: -686, ry: -0.5, tiltX: -0.36, tiltZ: -0.26, s: 1.1 },
-    { x: -58, z: -732, ry: 0.4, tiltX: 0.32, tiltZ: 0.28, s: 1.15 },
-    { x: 64, z: -746, ry: -0.7, tiltX: -0.42, tiltZ: -0.26, s: 1.25 },
-    { x: -118, z: -788, ry: 1.2, tiltX: 0.46, tiltZ: -0.34, s: 1.4 },
-    { x: 112, z: -805, ry: -1.1, tiltX: -0.34, tiltZ: 0.48, s: 1.35 },
-    { x: -158, z: -905, ry: 0.6, tiltX: 0.52, tiltZ: 0.29, s: 1.55 },
-    { x: 164, z: -918, ry: -0.5, tiltX: -0.38, tiltZ: -0.51, s: 1.6 },
-    { x: -86, z: -1020, ry: 0.9, tiltX: 0.44, tiltZ: -0.36, s: 1.65 },
-    { x: 88, z: -1035, ry: -0.8, tiltX: -0.46, tiltZ: 0.34, s: 1.7 },
-  ];
-  const sunkenTowerShafts = new THREE.InstancedMesh(ruinTowerShaftGeo, limestoneMat, sunkenSpireSpecs.length);
-  const sunkenTowerRoofs = new THREE.InstancedMesh(ruinTowerRoofGeo, slateRoofMat, sunkenSpireSpecs.length);
-  sunkenSpireSpecs.forEach((st, idx) => {
-    dummy.position.set(st.x, ACADEMY.lakeWaterY - 6.0, st.z);
-    dummy.rotation.set(st.tiltX, st.ry, st.tiltZ);
-    dummy.scale.setScalar(st.s);
-    dummy.updateMatrix();
-    sunkenTowerShafts.setMatrixAt(idx, dummy.matrix);
-    sunkenTowerRoofs.setMatrixAt(idx, dummy.matrix);
-  });
-  sunkenTowerShafts.instanceMatrix.needsUpdate = true;
-  sunkenTowerRoofs.instanceMatrix.needsUpdate = true;
-  sunkenTowerShafts.computeBoundingSphere();
-  sunkenTowerRoofs.computeBoundingSphere();
-  interiorGroup.add(sunkenTowerShafts, sunkenTowerRoofs);
-
-  // =========================================================================
-  // 3. SUNKEN ARCANE ACADEMY CITADEL (academyCastleGroup)
-  //    Pivoted at Approach Stair Base: (0, -13.65, -820.0)
-  //    100% Exterior Only · Clean Grid · Heavy InstancedMesh · Zero Z-Fighting
+  // 3. COLOSSAL SUNKEN ARCANE ACADEMY CITADEL (academyCastleGroup, true 1:1 scale)
+  //    2.4x Horizontal / 2.8x Vertical Scale + Upper Astral Citadel Tier
+  //    100% Exterior Only · Zero Interiors · Full Switchback Walkable Terraces
   // =========================================================================
   const academyCastleGroup = new THREE.Group();
   academyCastleGroup.position.set(ACADEMY.castleBaseX, ACADEMY.castleBaseY, ACADEMY.castleBaseZ);
   interiorGroup.add(academyCastleGroup);
 
   const buildLocalStairFlight = (
+    cx: number,
     width: number,
     zMax: number,
     zMin: number,
@@ -811,7 +1071,7 @@ export function buildSunkenAcademy({
     const len = zMax - zMin;
     const stepDepth = (len / steps) * 1.16;
     const stepRise = Math.abs(yEnd - yStart) / steps;
-    const thick = Math.max(0.45, stepRise + 0.16);
+    const thick = Math.max(0.45, stepRise + 0.18);
     const geo = track(new THREE.BoxGeometry(width, thick, stepDepth));
     const mesh = addWalkable(new THREE.InstancedMesh(geo, mat, steps));
     mesh.receiveShadow = true;
@@ -819,7 +1079,7 @@ export function buildSunkenAcademy({
       const t = (i + 0.5) / steps;
       const sz = THREE.MathUtils.lerp(zMax, zMin, t);
       const sy = THREE.MathUtils.lerp(yStart, yEnd, t) - thick * 0.5;
-      dummy.position.set(0, sy, sz);
+      dummy.position.set(cx, sy, sz);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
@@ -832,56 +1092,92 @@ export function buildSunkenAcademy({
   };
 
   // -------------------------------------------------------------------------
-  // 3A. PLAYABLE CEREMONIAL STAIRCASE, LANDING & GRAND FORECOURT (local z: 0 -> -76)
+  // 3A. PLAYABLE MULTI-TIERED PROMENADES, SWITCHBACK STAIRS & GRAND FORECOURT
   // -------------------------------------------------------------------------
-  // 1. Lower Cascading Staircase (local z: 0 -> -22, y: 0 -> +10)
-  buildLocalStairFlight(14.0, 0.0, -22.0, 0.0, 10.0, 26, flagstoneMat);
+  // 1. Central Lower Cascading Staircase (local z: 0 -> -22, y: 0 -> +10)
+  buildLocalStairFlight(0, 14.0, 0.0, -22.0, 0.0, 10.0, 26, flagstoneMat);
 
-  // 2. Mid Astrolabe Landing (local z: -22 -> -32, y: +10)
+  // 2. Lower Waterline Seawall Harbor Docks & Ramp Connectors (local y: 0 -> +2.0, z: 0..-24)
+  for (const side of [-1, 1]) {
+    // Solid masonry ramp connecting main approach (±6.8..±16.2) to seawall docks (y=2.0)
+    const connSteps = 10;
+    const cGeo = track(new THREE.BoxGeometry(1.15, 2.6, 10.0));
+    const cMesh = addWalkable(new THREE.InstancedMesh(cGeo, flagstoneMat, connSteps));
+    for (let i = 0; i < connSteps; i++) {
+      const t = (i + 0.5) / connSteps;
+      dummy.position.set(side * THREE.MathUtils.lerp(6.8, 16.2, t), THREE.MathUtils.lerp(0, 2.0, t) - 1.3, 3.0);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      cMesh.setMatrixAt(i, dummy.matrix);
+    }
+    cMesh.instanceMatrix.needsUpdate = true;
+    cMesh.computeBoundingBox();
+    cMesh.computeBoundingSphere();
+    academyCastleGroup.add(cMesh);
+
+    // Lower Seawall Harbor Dock Platform (|x|: 16..86, local z: 0..-24, local y = +2.0)
+    const seawallDock = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(70.0, 5.5, 24.0)), limestoneMat));
+    seawallDock.position.set(side * 51.0, -0.75, -12.0);
+    seawallDock.receiveShadow = true;
+    academyCastleGroup.add(seawallDock);
+
+    // Switchback Staircase from Seawall Dock up to Mid-Tier Perimeter Rampart (|x|: 74..84, local z: 0 -> -24, y: 2 -> 10)
+    buildLocalStairFlight(side * 79.0, 10.0, 0.0, -24.0, 2.0, 10.0, 22, flagstoneMat);
+  }
+
+  // 3. Central Mid Astrolabe Landing (local z: -22 -> -32, y = +10) & Wide Flanking Mid-Tier Rampart Promenades!
   const midLanding = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(22.0, 14.0, 10.4)), limestoneMat));
   midLanding.position.set(0, 3.0, -27.0);
   midLanding.receiveShadow = true;
   academyCastleGroup.add(midLanding);
 
-  const midMosaic = new THREE.Mesh(track(new THREE.CircleGeometry(4.2, 32)), astrolabeMat);
+  const midMosaic = new THREE.Mesh(track(new THREE.CircleGeometry(4.6, 32)), astrolabeMat);
   midMosaic.rotation.x = -Math.PI / 2;
-  midMosaic.position.set(0, 10.025, -27.0);
+  midMosaic.position.set(0, 10.03, -27.0);
   academyCastleGroup.add(midMosaic);
 
-  // 3. Upper Grand Stairway (local z: -32 -> -54, y: +10 -> +20)
-  buildLocalStairFlight(12.0, -32.0, -54.0, 10.0, 20.0, 26, flagstoneMat);
+  // Mid-Tier Perimeter Rampart Promenades (local x: -118..-10.5 & 10.5..120, local z: -24..-60, local y = +10)
+  const westRampart = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(107.5, 14.0, 36.0)), limestoneMat));
+  westRampart.position.set(-64.25, 3.0, -42.0);
+  westRampart.receiveShadow = true;
+  academyCastleGroup.add(westRampart);
 
-  // 4. Grand Cathedral Forecourt Terrace (local z: -54 -> -76, y: +20)
-  const forecourtMesh = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(28.0, 24.0, 22.5)), limestoneMat));
-  forecourtMesh.position.set(0, 8.0, -65.0);
+  const eastRampart = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(109.5, 14.0, 36.0)), limestoneMat));
+  eastRampart.position.set(65.25, 3.0, -42.0);
+  eastRampart.receiveShadow = true;
+  academyCastleGroup.add(eastRampart);
+
+  // 4. Upper Grand Stairway (central) + Flanking Left & Right Wing Switchback Stairways (local z: -32 -> -54, y: +10 -> +20)
+  buildLocalStairFlight(0, 12.0, -32.0, -54.0, 10.0, 20.0, 26, flagstoneMat);
+  buildLocalStairFlight(-59.0, 10.0, -32.0, -54.0, 10.0, 20.0, 26, flagstoneMat);
+  buildLocalStairFlight(59.0, 10.0, -32.0, -54.0, 10.0, 20.0, 26, flagstoneMat);
+
+  // 5. Widened Grand Cathedral Forecourt & Wing Terraces (local x: -76..+76, local z: -54 -> -86, y = +20)
+  const forecourtMesh = addWalkable(new THREE.Mesh(track(new THREE.BoxGeometry(152.0, 24.0, 32.5)), limestoneMat));
+  forecourtMesh.position.set(0, 8.0, -70.0);
   forecourtMesh.receiveShadow = true;
   academyCastleGroup.add(forecourtMesh);
 
-  // Solid stone wing terraces flanking Forecourt to seat balustrades, cliffs & autumn tree groves
-  for (const side of [-1, 1]) {
-    const wingTerrace = new THREE.Mesh(track(new THREE.BoxGeometry(16.0, 25.0, 26.0)), limestoneMat);
-    wingTerrace.position.set(side * 22.0, 7.0, -64.0);
-    academyCastleGroup.add(wingTerrace);
-  }
-
-  // Solid recessed sloped stair foundation bases
+  // Solid sloped stair undersides so stairs look grounded
   const lowerStairBase = new THREE.Mesh(track(new THREE.BoxGeometry(14.6, 14.0, 23.8)), striatedCliffMat);
   lowerStairBase.position.set(0, -3.5, -11.0);
   lowerStairBase.rotation.x = Math.atan2(10, 22);
   academyCastleGroup.add(lowerStairBase);
 
-  const upperStairBase = new THREE.Mesh(track(new THREE.BoxGeometry(12.6, 14.0, 23.8)), limestoneMat);
-  upperStairBase.position.set(0, 6.5, -43.0);
-  upperStairBase.rotation.x = Math.atan2(10, 22);
-  academyCastleGroup.add(upperStairBase);
+  for (const sx of [0, -59.0, 59.0]) {
+    const uBase = new THREE.Mesh(track(new THREE.BoxGeometry(sx === 0 ? 12.6 : 10.6, 14.0, 23.8)), limestoneMat);
+    uBase.position.set(sx, 6.5, -43.0);
+    uBase.rotation.x = Math.atan2(10, 22);
+    academyCastleGroup.add(uBase);
+  }
 
-  // Pierced Gothic Stone Balustrades (InstancedMesh) lining Lower Stair, Mid Landing, Upper Stair & Forecourt
+  // Pierced Gothic Stone Balustrades (InstancedMesh) framing every central & wing stair
   const balBayGeo = track(createGothicBayGeometry(2.0, 1.35, 1.1, 0.95, 0.42));
   const balRailGeo = track(new THREE.BoxGeometry(2.05, 0.22, 0.56));
   const balTransforms: Array<{ x: number; y: number; z: number; rx: number; ry: number }> = [];
   const stairSlope = Math.atan2(10, 22);
 
-  // Lower stair balustrades
   for (let i = 0; i < 11; i++) {
     const t = (i + 0.5) / 11;
     const bz = THREE.MathUtils.lerp(0, -22, t);
@@ -890,28 +1186,25 @@ export function buildSunkenAcademy({
       balTransforms.push({ x: side * 7.2, y: by, z: bz, rx: stairSlope, ry: Math.PI / 2 });
     }
   }
-  // Mid-landing side balustrades
-  for (let i = 0; i < 5; i++) {
-    const bz = THREE.MathUtils.lerp(-23, -31, i / 4);
-    for (const side of [-1, 1]) {
-      balTransforms.push({ x: side * 10.8, y: 10.0, z: bz, rx: 0, ry: Math.PI / 2 });
-    }
-  }
-  // Upper stair balustrades
   for (let i = 0; i < 11; i++) {
     const t = (i + 0.5) / 11;
     const bz = THREE.MathUtils.lerp(-32, -54, t);
     const by = THREE.MathUtils.lerp(10, 20, t);
     for (const side of [-1, 1]) {
       balTransforms.push({ x: side * 6.2, y: by, z: bz, rx: stairSlope, ry: Math.PI / 2 });
+      balTransforms.push({ x: -59.0 + side * 5.2, y: by, z: bz, rx: stairSlope, ry: Math.PI / 2 });
+      balTransforms.push({ x: 59.0 + side * 5.2, y: by, z: bz, rx: stairSlope, ry: Math.PI / 2 });
     }
   }
-  // Forecourt side balustrades
-  for (let i = 0; i < 10; i++) {
-    const bz = THREE.MathUtils.lerp(-55.5, -74.5, i / 9);
-    for (const side of [-1, 1]) {
-      balTransforms.push({ x: side * 13.8, y: 20.0, z: bz, rx: 0, ry: Math.PI / 2 });
-    }
+  for (let i = 0; i < 18; i++) {
+    const bx = THREE.MathUtils.lerp(-116, 116, i / 17);
+    if (Math.abs(bx) < 12 || Math.abs(bx - -106) < 8 || Math.abs(bx - 112) < 8 || Math.abs(Math.abs(bx) - 79) < 7) continue;
+    balTransforms.push({ x: bx, y: 10.0, z: -24.3, rx: 0, ry: 0 });
+  }
+  for (let i = 0; i < 14; i++) {
+    const bx = THREE.MathUtils.lerp(-74, 74, i / 13);
+    if (Math.abs(bx) < 7 || Math.abs(Math.abs(bx) - 59) < 6) continue;
+    balTransforms.push({ x: bx, y: 20.0, z: -54.3, rx: 0, ry: 0 });
   }
 
   const balBaysInst = new THREE.InstancedMesh(balBayGeo, carvedRibMat, balTransforms.length);
@@ -933,161 +1226,125 @@ export function buildSunkenAcademy({
   balRailsInst.computeBoundingSphere();
   academyCastleGroup.add(balBaysInst, balRailsInst);
 
-  // Forecourt Ornamental Wrought-Iron & Stone Arch Gate Screen at top of Upper Stair (local z = -54.2)
-  // Wide open passable center (|x| <= 6.2) so player walks right through onto the Forecourt!
+  // Ornamental Forecourt Gate Screen at top of Central Upper Stair (local z = -54.2, wide unobstructed 12.2m opening!)
   const forecourtGateArchGeo = track(
-    new THREE.ExtrudeGeometry(createArchShape(12.2, 11.4, 1.35), { depth: 1.3, bevelEnabled: false }),
+    scaleExtrudeUVs(
+      new THREE.ExtrudeGeometry(createArchShape(12.4, 12.4, 1.45), { depth: 1.4, bevelEnabled: false }),
+      0.08,
+    ),
   );
-  forecourtGateArchGeo.translate(0, 0, -0.65);
+  forecourtGateArchGeo.translate(0, 0, -0.7);
   const forecourtGateArch = new THREE.Mesh(forecourtGateArchGeo, limestoneMat);
   forecourtGateArch.position.set(0, 20.0, -54.2);
   academyCastleGroup.add(forecourtGateArch);
 
-  // Ornamental black-iron radial fanlight tracery inside upper half of the Forecourt Gate Arch
-  const gateTransomRing = new THREE.Mesh(track(new THREE.TorusGeometry(4.2, 0.14, 6, 24, Math.PI)), blackIronMat);
-  gateTransomRing.position.set(0, 27.2, -54.2);
-  academyCastleGroup.add(gateTransomRing);
-  for (let r = -2; r <= 2; r++) {
-    const spoke = new THREE.Mesh(track(new THREE.BoxGeometry(0.1, 4.4, 0.12)), blackIronMat);
-    spoke.position.set(Math.sin(r * 0.42) * 2.1, 27.2 + Math.cos(r * 0.42) * 2.1, -54.2);
-    spoke.rotation.z = -r * 0.42;
-    academyCastleGroup.add(spoke);
-  }
   for (const side of [-1, 1]) {
-    const gPier = new THREE.Mesh(track(new THREE.BoxGeometry(2.6, 15.5, 2.6)), limestoneMat);
-    gPier.position.set(side * 7.6, 27.7, -54.2);
+    const gPier = new THREE.Mesh(track(new THREE.BoxGeometry(2.8, 17.0, 2.8)), limestoneMat);
+    gPier.position.set(side * 7.8, 28.5, -54.2);
     academyCastleGroup.add(gPier);
-    const gPinnacle = new THREE.Mesh(track(new THREE.ConeGeometry(1.4, 6.8, 4)), carvedRibMat);
-    gPinnacle.position.set(side * 7.6, 38.8, -54.2);
+    const gPinnacle = new THREE.Mesh(track(new THREE.ConeGeometry(1.5, 7.5, 4)), carvedRibMat);
+    gPinnacle.position.set(side * 7.8, 40.5, -54.2);
     gPinnacle.rotation.y = Math.PI / 4;
     academyCastleGroup.add(gPinnacle);
+
+    // Forecourt Braziers & Guardian Statues (exact match to STATIC_COLLIDERS!)
+    statuePlacements.push({ x: side * 34.0, y: ACADEMY.forecourtY, z: -892.0, yaw: -side * 0.45, s: 1.35 });
   }
 
-  // Heavy Square Plinths Topped with Dark Shrouded / Veiled Scholar Statues (Composite 5-Part Group)
-  const buildVeiledStatue = (sx: number, sy: number, sz: number, facingYaw: number, scale = 1.0) => {
-    const sg = new THREE.Group();
-    sg.position.set(sx, sy, sz);
-    sg.rotation.y = facingYaw;
-    sg.scale.setScalar(scale);
-    academyCastleGroup.add(sg);
+  // Instantiate all Veiled Scholar Statues across Causeway & Forecourt
+  const statPlinthInst = new THREE.InstancedMesh(plinthBaseGeo, limestoneMat, statuePlacements.length);
+  const statCapInst = new THREE.InstancedMesh(plinthCapGeo, carvedRibMat, statuePlacements.length);
+  const statBodyInst = new THREE.InstancedMesh(statueBodyGeo, veiledStatueMat, statuePlacements.length);
+  statuePlacements.forEach((sp, idx) => {
+    dummy.position.set(sp.x, sp.y, sp.z);
+    dummy.rotation.set(0, sp.yaw, 0);
+    dummy.scale.setScalar(sp.s);
+    dummy.updateMatrix();
+    statPlinthInst.setMatrixAt(idx, dummy.matrix);
+    statCapInst.setMatrixAt(idx, dummy.matrix);
+    statBodyInst.setMatrixAt(idx, dummy.matrix);
+  });
+  statPlinthInst.instanceMatrix.needsUpdate = true;
+  statCapInst.instanceMatrix.needsUpdate = true;
+  statBodyInst.instanceMatrix.needsUpdate = true;
+  statPlinthInst.computeBoundingSphere();
+  statCapInst.computeBoundingSphere();
+  statBodyInst.computeBoundingSphere();
+  interiorGroup.add(statPlinthInst, statCapInst, statBodyInst);
 
-    // 1. Heavy square stone plinth + stepped cap
-    const plinth = new THREE.Mesh(track(new THREE.BoxGeometry(2.2, 2.1, 2.2)), limestoneMat);
-    plinth.position.y = 1.05;
-    sg.add(plinth);
-    const plinthCap = new THREE.Mesh(track(new THREE.BoxGeometry(2.45, 0.35, 2.45)), carvedRibMat);
-    plinthCap.position.y = 2.25;
-    sg.add(plinthCap);
-
-    // 2. Draped lower robes
-    const robeBase = new THREE.Mesh(track(new THREE.CylinderGeometry(0.55, 0.85, 1.9, 8)), veiledStatueMat);
-    robeBase.position.y = 3.35;
-    sg.add(robeBase);
-
-    // 3. Cloaked upper torso & shoulders
-    const torso = new THREE.Mesh(track(new THREE.CylinderGeometry(0.45, 0.62, 1.4, 8)), veiledStatueMat);
-    torso.position.y = 4.65;
-    sg.add(torso);
-
-    // 4. Shrouded / veiled cowled head tilted forward in solemn contemplation
-    const cowl = new THREE.Mesh(track(new THREE.ConeGeometry(0.42, 1.05, 7)), veiledStatueMat);
-    cowl.position.set(0, 5.55, 0.12);
-    cowl.rotation.x = 0.25;
-    sg.add(cowl);
-
-    // 5. Clasped stone tome / scholar's staff
-    const staff = new THREE.Mesh(track(new THREE.CylinderGeometry(0.06, 0.07, 2.8, 6)), blackIronMat);
-    staff.position.set(0.46, 3.8, 0.42);
-    staff.rotation.x = 0.12;
-    sg.add(staff);
-  };
-
+  // Add Academy Staircase & Forecourt Raven Lampposts to unified InstancedMesh batch
   for (const side of [-1, 1]) {
-    buildVeiledStatue(side * 8.2, 0.0, 0.2, -side * 0.45, 1.15);
-    buildVeiledStatue(side * 9.5, 10.0, -25.0, -side * 0.65, 1.05);
-    buildVeiledStatue(side * 11.4, 20.0, -58.5, -side * 0.55, 1.1);
-    buildVeiledStatue(side * 11.4, 20.0, -68.5, -side * 0.55, 1.1);
+    causewayLanterns.push([side * 6.8, ACADEMY.castleBaseY, -822.8, -side]);
+    causewayLanterns.push([side * 6.8, ACADEMY.castleBaseY + 5.0, -831.0, -side]);
+    causewayLanterns.push([side * 9.8, ACADEMY.midLandingY, -849.2, -side]);
+    causewayLanterns.push([side * 5.8, ACADEMY.midLandingY + 5.0, -863.0, -side]);
+    causewayLanterns.push([side * 10.6, ACADEMY.forecourtY, -882.0, -side]);
+    causewayLanterns.push([side * 10.6, ACADEMY.forecourtY, -898.0, -side]);
+    causewayLanterns.push([side * 44.0, ACADEMY.forecourtY, -882.0, -side]);
   }
 
-  // Ornate Black-Iron Lampposts with Gargoyle/Raven Perches Suspending Glowing Lanterns
-  const buildRavenLamppost = (lx: number, ly: number, lz: number, inwardSign: number) => {
-    const lg = new THREE.Group();
-    lg.position.set(lx, ly, lz);
-    academyCastleGroup.add(lg);
+  // Unified InstancedMesh Raven/Gargoyle Lampposts across the entire Lake & Academy Grounds
+  const lpBase = new THREE.CylinderGeometry(0.32, 0.44, 0.8, 8);
+  lpBase.translate(0, 0.4, 0);
+  const lpPole = new THREE.CylinderGeometry(0.08, 0.14, 4.4, 8);
+  lpPole.translate(0, 2.8, 0);
+  const lpArm = new THREE.BoxGeometry(1.15, 0.1, 0.1);
+  lpArm.translate(0.48, 4.85, 0);
+  const lpRaven = new THREE.SphereGeometry(0.28, 7, 5);
+  lpRaven.scale(0.9, 1.25, 1.3);
+  lpRaven.translate(0, 5.18, 0);
+  const lpCap = new THREE.ConeGeometry(0.34, 0.32, 6);
+  lpCap.translate(0.96, 4.18, 0);
+  const lampMetalGeo = track(mergeGeometries([lpBase, lpPole, lpArm, lpRaven, lpCap])!);
+  lpBase.dispose();
+  lpPole.dispose();
+  lpArm.dispose();
+  lpRaven.dispose();
+  lpCap.dispose();
 
-    // Stone base pedestal + slender fluted iron pole
-    const base = new THREE.Mesh(track(new THREE.CylinderGeometry(0.32, 0.44, 0.8, 8)), carvedRibMat);
-    base.position.y = 0.4;
-    lg.add(base);
-    const pole = new THREE.Mesh(track(new THREE.CylinderGeometry(0.08, 0.14, 4.4, 8)), blackIronMat);
-    pole.position.y = 2.8;
-    lg.add(pole);
+  const lampGlowGeo = track(new THREE.OctahedronGeometry(0.26, 0));
+  lampGlowGeo.translate(0.96, 3.84, 0);
 
-    // Ornate cross-arm bracket pointing toward the walkway
-    const arm = new THREE.Mesh(track(new THREE.BoxGeometry(1.15, 0.1, 0.1)), blackIronMat);
-    arm.position.set(inwardSign * 0.48, 4.85, 0);
-    lg.add(arm);
-
-    // Perched Gargoyle / Raven silhouette on top of the post
-    const ravenBody = new THREE.Mesh(track(new THREE.DodecahedronGeometry(0.28, 0)), blackIronMat);
-    ravenBody.position.set(0, 5.18, 0);
-    ravenBody.scale.set(0.9, 1.25, 1.3);
-    lg.add(ravenBody);
-    for (const wSide of [-1, 1]) {
-      const wing = new THREE.Mesh(track(new THREE.ConeGeometry(0.24, 0.72, 4)), blackIronMat);
-      wing.position.set(inwardSign * 0.08, 5.35, wSide * 0.28);
-      wing.rotation.x = wSide * 0.65;
-      wing.rotation.z = -inwardSign * 0.25;
-      lg.add(wing);
-    }
-
-    // Hanging chain + glowing warm-gold lantern cage suspended from bracket
-    const chain = new THREE.Mesh(track(new THREE.CylinderGeometry(0.025, 0.025, 0.65, 5)), blackIronMat);
-    chain.position.set(inwardSign * 0.96, 4.5, 0);
-    lg.add(chain);
-    const lCap = new THREE.Mesh(track(new THREE.ConeGeometry(0.32, 0.28, 6)), blackIronMat);
-    lCap.position.set(inwardSign * 0.96, 4.18, 0);
-    lg.add(lCap);
-    const lGlow = new THREE.Mesh(track(new THREE.OctahedronGeometry(0.24, 0)), amberLanternMat);
-    lGlow.position.set(inwardSign * 0.96, 3.88, 0);
-    lg.add(lGlow);
-    lanternFlames.push(lGlow);
-  };
-
-  for (const side of [-1, 1]) {
-    buildRavenLamppost(side * 6.8, 0.0, -2.8, -side);
-    buildRavenLamppost(side * 6.8, 5.0, -11.0, -side);
-    buildRavenLamppost(side * 9.8, 10.0, -29.2, -side);
-    buildRavenLamppost(side * 5.8, 15.0, -43.0, -side);
-    buildRavenLamppost(side * 10.6, 20.0, -63.0, -side);
-    buildRavenLamppost(side * 10.6, 20.0, -72.0, -side);
-  }
+  const lampMetalInst = new THREE.InstancedMesh(lampMetalGeo, blackIronMat, causewayLanterns.length);
+  const lampGlowInst = new THREE.InstancedMesh(lampGlowGeo, amberLanternMat, causewayLanterns.length);
+  causewayLanterns.forEach(([lx, ly, lz, dir], idx) => {
+    dummy.position.set(lx, ly, lz);
+    dummy.rotation.set(0, dir > 0 ? 0 : Math.PI, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    lampMetalInst.setMatrixAt(idx, dummy.matrix);
+    lampGlowInst.setMatrixAt(idx, dummy.matrix);
+  });
+  lampMetalInst.instanceMatrix.needsUpdate = true;
+  lampGlowInst.instanceMatrix.needsUpdate = true;
+  lampMetalInst.computeBoundingSphere();
+  lampGlowInst.computeBoundingSphere();
+  interiorGroup.add(lampMetalInst, lampGlowInst);
 
   // -------------------------------------------------------------------------
-  // 3B. JAGGED VERTICALLY-STRIATED ROCK ISLAND & LOWER ARCHED AQUEDUCT BASE
+  // 3B. COLOSSAL JAGGED BASALT CLIFF ISLAND & 2.4x/2.8x PERIMETER ARCADE WALLS
   // -------------------------------------------------------------------------
-  // Jagged faceted basalt cliff pillars & crag shelves (NO pointy wizard-hat cones beside the stairs!)
-  const cragGeo = track(new THREE.CylinderGeometry(0.68, 1.15, 1, 7));
+  // Jagged faceted basalt cliff crags (strictly behind z < -62 or outside |x| > 82 so ALL staircases stay 100% clear!)
+  const cragGeo = track(new THREE.CylinderGeometry(0.66, 1.18, 1, 7));
   cragGeo.translate(0, 0.5, 0);
 
   const cragSpecs: Array<{ x: number; y: number; z: number; rx: number; h: number; rz: number; rot: number }> = [
-    // Low terraced basalt shoulders clear of staircases
-    { x: -25, y: -7, z: -26, rx: 14, h: 15, rz: 15, rot: 0.4 },
-    { x: 25, y: -7, z: -26, rx: 14, h: 15, rz: 15, rot: -0.5 },
-    { x: -34, y: -7, z: -52, rx: 18, h: 24, rz: 20, rot: 0.9 },
-    { x: 34, y: -7, z: -52, rx: 18, h: 24, rz: 20, rot: -0.8 },
-    // Left plateau cliff mass supporting Left Cathedral Wing
-    { x: -46, y: -7, z: -84, rx: 24, h: 35, rz: 28, rot: 0.3 },
-    { x: -64, y: -7, z: -96, rx: 20, h: 32, rz: 24, rot: 1.2 },
-    { x: -34, y: -7, z: -108, rx: 22, h: 34, rz: 24, rot: -0.4 },
-    // Right highest peak supporting Octagonal Rotunda & Ultra-Tall Spire Tower
-    { x: 40, y: -7, z: -84, rx: 24, h: 37, rz: 28, rot: 0.7 },
-    { x: 58, y: -7, z: -98, rx: 22, h: 35, rz: 26, rot: -1.1 },
-    { x: 32, y: -7, z: -112, rx: 22, h: 34, rz: 24, rot: 0.2 },
-    // Rear spine crags closing the island perimeter cleanly
-    { x: 0, y: -7, z: -118, rx: 26, h: 34, rz: 26, rot: 0.5 },
-    { x: -18, y: -7, z: -130, rx: 20, h: 30, rz: 22, rot: -0.9 },
-    { x: 20, y: -7, z: -130, rx: 20, h: 32, rz: 22, rot: 0.8 },
+    // Flanking coastal rock buttresses framing outer wings cleanly BEHIND the playable mid-tier ramparts (z <= -92)
+    { x: -124, y: -8, z: -92, rx: 26, h: 42, rz: 26, rot: 0.4 },
+    { x: 124, y: -8, z: -92, rx: 26, h: 42, rz: 26, rot: -0.5 },
+    { x: -126, y: -8, z: -116, rx: 36, h: 68, rz: 38, rot: 0.9 },
+    { x: 126, y: -8, z: -116, rx: 36, h: 68, rz: 38, rot: -0.8 },
+    // Left Wing colossal plateau cliffs supporting scaled Left Cathedral Wing
+    { x: -108, y: -8, z: -136, rx: 48, h: 86, rz: 52, rot: 0.3 },
+    { x: -145, y: -8, z: -158, rx: 40, h: 78, rz: 44, rot: 1.2 },
+    // Right Wing colossal plateau cliffs supporting scaled Octagonal Rotunda & Bell Towers
+    { x: 96, y: -8, z: -128, rx: 48, h: 88, rz: 52, rot: 0.7 },
+    { x: 138, y: -8, z: -154, rx: 42, h: 80, rz: 46, rot: -1.1 },
+    // Massive Rear Observatory Foundation Crags
+    { x: 0, y: -8, z: -168, rx: 64, h: 92, rz: 58, rot: 0.5 },
+    { x: -58, y: -8, z: -188, rx: 52, h: 86, rz: 48, rot: -0.9 },
+    { x: 58, y: -8, z: -188, rx: 52, h: 86, rz: 48, rot: 0.8 },
+    { x: 0, y: -8, z: -222, rx: 58, h: 78, rz: 48, rot: 0.1 },
   ];
 
   const cliffIslandMesh = new THREE.InstancedMesh(cragGeo, striatedCliffMat, cragSpecs.length);
@@ -1102,59 +1359,36 @@ export function buildSunkenAcademy({
   cliffIslandMesh.computeBoundingSphere();
   academyCastleGroup.add(cliffIslandMesh);
 
-  // Solid lower cliff island plateau ring seated safely below midLanding (y = 8.4 < 10.0)
-  const lowerIslandBed = new THREE.Mesh(track(new THREE.CylinderGeometry(64, 70, 12, 24)), striatedCliffMat);
-  lowerIslandBed.position.set(0, 2.4, -84);
+  // Solid rocky island seabed shelf seated cleanly BELOW the y=0 lower stairs & y=+2 seawall docks
+  const lowerIslandBed = new THREE.Mesh(track(new THREE.CylinderGeometry(142, 160, 10, 28)), striatedCliffMat);
+  lowerIslandBed.position.set(0, -6.0, -148);
   academyCastleGroup.add(lowerIslandBed);
 
-  // Solid upper rocky plateau shelves seated cleanly atop the cliff peaks
-  const leftPlateau = new THREE.Mesh(track(new THREE.CylinderGeometry(24, 28, 12, 10)), striatedCliffMat);
-  leftPlateau.position.set(-46, 20, -90);
+  const leftPlateau = new THREE.Mesh(track(new THREE.CylinderGeometry(48, 56, 26, 10)), striatedCliffMat);
+  leftPlateau.position.set(-108, 42, -138);
   academyCastleGroup.add(leftPlateau);
 
-  const rightPlateau = new THREE.Mesh(track(new THREE.CylinderGeometry(24, 28, 14, 10)), striatedCliffMat);
-  rightPlateau.position.set(42, 21, -90);
+  const rightPlateau = new THREE.Mesh(track(new THREE.CylinderGeometry(48, 56, 28, 10)), striatedCliffMat);
+  rightPlateau.position.set(96, 43, -132);
   academyCastleGroup.add(rightPlateau);
 
-  // Stepped Stone Retaining Walls clinging to the cliff faces
-  const retainWallGeo = track(new THREE.BoxGeometry(16, 18, 4.2));
-  const retainSpecs: Array<[number, number, number, number]> = [
-    [-22, 10, -40, 0.35],
-    [22, 10, -40, -0.35],
-    [-34, 16, -62, 0.52],
-    [34, 16, -62, -0.52],
-    [-54, 18, -74, 0.25],
-    [54, 18, -74, -0.25],
-  ];
-  const retainWalls = new THREE.InstancedMesh(retainWallGeo, limestoneMat, retainSpecs.length);
-  retainSpecs.forEach(([rx, ry, rz, rrot], idx) => {
-    dummy.position.set(rx, ry, rz);
-    dummy.rotation.set(0, rrot, 0);
-    dummy.scale.set(1, 1, 1);
-    dummy.updateMatrix();
-    retainWalls.setMatrixAt(idx, dummy.matrix);
-  });
-  retainWalls.instanceMatrix.needsUpdate = true;
-  retainWalls.computeBoundingSphere();
-  academyCastleGroup.add(retainWalls);
-
-  // Sweeping Lower Pointed-Arch Aqueduct / Colonnade Wall wrapping the island perimeter just above water!
-  const islandCenterZ = -78;
-  const perimeterBayGeo = track(createGothicBayGeometry(7.2, 12.0, 4.6, 8.8, 2.4));
-  const perimeterCopingGeo = track(new THREE.BoxGeometry(7.4, 0.9, 3.0));
-  const perimeterPierGeo = track(new THREE.BoxGeometry(1.8, 14.2, 3.2));
-  const perimeterPinnacleGeo = track(new THREE.ConeGeometry(0.9, 3.8, 4));
+  // Colossal 2.4x Sweeping Perimeter Pointed-Arch Arcade Curtain Wall wrapping the rocky island (rX = 166, rZ = 148)
+  const islandCenterZ = -148;
+  const perimeterBayGeo = track(createGothicBayGeometry(14.8, 28.0, 9.4, 20.5, 4.4));
+  const perimeterCopingGeo = track(new THREE.BoxGeometry(15.2, 1.8, 5.4));
+  const perimeterPierGeo = track(new THREE.BoxGeometry(3.4, 33.0, 5.8));
+  const perimeterPinnacleGeo = track(new THREE.ConeGeometry(1.8, 8.8, 4));
 
   const arcadeBays: Array<{ x: number; y: number; z: number; ry: number }> = [];
-  const totalPerimSteps = 44;
+  const totalPerimSteps = 56;
   for (let i = 0; i < totalPerimSteps; i++) {
     const a = (i / totalPerimSteps) * Math.PI * 2;
-    const rx = Math.sin(a) * 68;
-    const rz = islandCenterZ + Math.cos(a) * 62;
-    // Leave open gap strictly at the front ceremonial staircase entrance (z > -28, |x| < 14)
-    if (rz > -28 && Math.abs(rx) < 14.5) continue;
-    const tangentYaw = Math.atan2(Math.cos(a) * 68, -Math.sin(a) * 62);
-    arcadeBays.push({ x: rx, y: -1.5, z: rz, ry: tangentYaw + Math.PI / 2 });
+    const rx = Math.sin(a) * 166;
+    const rz = islandCenterZ + Math.cos(a) * 148;
+    // Leave wide open sweep along the front playable seawall/ramps/wings (rz > -68)
+    if (rz > -68) continue;
+    const tangentYaw = Math.atan2(Math.cos(a) * 166, -Math.sin(a) * 148);
+    arcadeBays.push({ x: rx, y: -2.0, z: rz, ry: tangentYaw + Math.PI / 2 });
   }
 
   const perimBaysInst = new THREE.InstancedMesh(perimeterBayGeo, limestoneMat, arcadeBays.length);
@@ -1169,17 +1403,17 @@ export function buildSunkenAcademy({
     dummy.updateMatrix();
     perimBaysInst.setMatrixAt(idx, dummy.matrix);
 
-    dummy.position.set(ab.x, ab.y + 12.2, ab.z);
+    dummy.position.set(ab.x, ab.y + 28.5, ab.z);
     dummy.updateMatrix();
     perimCopingInst.setMatrixAt(idx, dummy.matrix);
 
-    const pierX = ab.x + Math.cos(ab.ry) * 3.6;
-    const pierZ = ab.z - Math.sin(ab.ry) * 3.6;
-    dummy.position.set(pierX, ab.y + 6.5, pierZ);
+    const pierX = ab.x + Math.cos(ab.ry) * 7.4;
+    const pierZ = ab.z - Math.sin(ab.ry) * 7.4;
+    dummy.position.set(pierX, ab.y + 15.5, pierZ);
     dummy.updateMatrix();
     perimPiersInst.setMatrixAt(idx, dummy.matrix);
 
-    dummy.position.set(pierX, ab.y + 15.2, pierZ);
+    dummy.position.set(pierX, ab.y + 35.8, pierZ);
     dummy.rotation.set(0, ab.ry + Math.PI / 4, 0);
     dummy.updateMatrix();
     perimPinsInst.setMatrixAt(idx, dummy.matrix);
@@ -1194,31 +1428,45 @@ export function buildSunkenAcademy({
   perimPinsInst.computeBoundingSphere();
   academyCastleGroup.add(perimBaysInst, perimCopingInst, perimPiersInst, perimPinsInst);
 
-  // Upper Terrace Golden-Amber Autumn Trees planted solidly into the lower island bed & wing terraces!
+  // Golden-Amber Autumn Trees & Dark Cypresses (InstancedMesh) across Academy Terraces, Cloister & Island Rim
   const autumnTreeCoords: Array<{ x: number; y: number; z: number; s: number; rot: number }> = [];
+  const cypressCoords: Array<{ x: number; y: number; z: number; s: number }> = [];
+
   for (let i = 0; i < arcadeBays.length; i += 2) {
     const ab = arcadeBays[i];
-    const inwardX = ab.x * 0.86;
-    const inwardZ = islandCenterZ + (ab.z - islandCenterZ) * 0.86;
-    if (inwardZ > -42 && Math.abs(inwardX) < 18) continue;
-    autumnTreeCoords.push({
-      x: inwardX,
-      y: 8.3,
-      z: inwardZ,
-      s: 0.95 + (i % 4) * 0.14,
-      rot: i * 1.1,
-    });
+    if (ab.z > -92) continue;
+    const inwardX = ab.x * 0.88;
+    const inwardZ = islandCenterZ + (ab.z - islandCenterZ) * 0.88;
+    autumnTreeCoords.push({ x: inwardX, y: 24.0, z: inwardZ, s: 1.85 + (i % 4) * 0.25, rot: i * 1.1 });
+    if (i % 4 === 0) {
+      cypressCoords.push({ x: ab.x * 0.82, y: 25.0, z: islandCenterZ + (ab.z - islandCenterZ) * 0.82, s: 1.8 + (i % 3) * 0.3 });
+    }
   }
-  // Grounded golden-amber tree clusters planted firmly on the Forecourt Wing Terraces (y = 19.5) & Plateaus
+  // Trees on Forecourt Wing Terraces & Mid-Tier Ramparts
   for (const [tx, ty, tz, ts] of [
-    [-19.5, 19.4, -56.5, 1.05],
-    [19.5, 19.4, -56.5, 1.08],
-    [-25.5, 19.4, -64.5, 1.15],
-    [25.5, 19.4, -64.5, 1.15],
-    [-48, 25.8, -72, 1.2],
-    [48, 25.8, -72, 1.2],
+    [-46.0, 20.0, -78.0, 1.35],
+    [46.0, 20.0, -78.0, 1.35],
+    [-68.0, 20.0, -74.0, 1.45],
+    [68.0, 20.0, -74.0, 1.45],
+    [-94.0, 10.0, -56.0, 1.3],
+    [94.0, 10.0, -56.0, 1.3],
   ]) {
     autumnTreeCoords.push({ x: tx, y: ty, z: tz, s: ts, rot: tx * 0.2 });
+  }
+  // Trees planted in West Cloister Courtyard outer stone beds (safely clear of walkable walkways)
+  for (const [wx, wz] of [
+    [-145, -760],
+    [-145, -808],
+    [-95, -760],
+    [-95, -808],
+  ]) {
+    autumnTreeCoords.push({
+      x: wx,
+      y: ACADEMY.westCloisterY - ACADEMY.castleBaseY,
+      z: wz - ACADEMY.castleBaseZ,
+      s: 1.25,
+      rot: wx * 0.3,
+    });
   }
 
   const aTrunkGeo = track(new THREE.CylinderGeometry(0.24, 0.44, 4.8, 6));
@@ -1256,142 +1504,189 @@ export function buildSunkenAcademy({
   autumnCanopies.computeBoundingSphere();
   academyCastleGroup.add(autumnTrunks, autumnCanopies);
 
+  // Dark Gothic Cypresses (InstancedMesh)
+  const cTrunkGeo = track(new THREE.CylinderGeometry(0.18, 0.34, 3.5, 5));
+  cTrunkGeo.translate(0, 1.75, 0);
+  const cConeGeo = track(new THREE.ConeGeometry(1.4, 9.6, 7));
+  cConeGeo.translate(0, 7.2, 0);
+  const cTrunks = new THREE.InstancedMesh(cTrunkGeo, barkMat, cypressCoords.length);
+  const cCones = new THREE.InstancedMesh(cConeGeo, cypressFoliageMat, cypressCoords.length);
+  cypressCoords.forEach((cc, idx) => {
+    dummy.position.set(cc.x, cc.y, cc.z);
+    dummy.rotation.set(0, idx * 0.7, 0);
+    dummy.scale.setScalar(cc.s);
+    dummy.updateMatrix();
+    cTrunks.setMatrixAt(idx, dummy.matrix);
+    cCones.setMatrixAt(idx, dummy.matrix);
+  });
+  cTrunks.instanceMatrix.needsUpdate = true;
+  cCones.instanceMatrix.needsUpdate = true;
+  cTrunks.computeBoundingSphere();
+  cCones.computeBoundingSphere();
+  academyCastleGroup.add(cTrunks, cCones);
+
   // -------------------------------------------------------------------------
-  // 3C. MAIN CATHEDRAL ELEVATION & ROSE WINDOW FACADE (local z = -76, y = 20+)
+  // 3C. COLOSSAL MAIN CATHEDRAL ELEVATION (2.4x W x 2.8x H, local z = -86, y = 20+)
   // -------------------------------------------------------------------------
-  const facadeZ = -76.0;
+  const facadeZ = -86.0;
   const facadeBaseY = 20.0;
 
-  // Main Central Cathedral Nave Mass (recessed behind facadeZ to reveal deep portal alcove!)
-  const naveBody = new THREE.Mesh(track(new THREE.BoxGeometry(28.0, 44.0, 43.0)), limestoneMat);
-  naveBody.position.set(0, facadeBaseY + 22.0, facadeZ - 22.8);
+  // Main Cathedral Nave Body (66m wide x 118m tall x 98m deep!)
+  const naveBody = new THREE.Mesh(track(new THREE.BoxGeometry(66.0, 118.0, 98.0)), limestoneMat);
+  naveBody.position.set(0, facadeBaseY + 59.0, facadeZ - 50.5);
   academyCastleGroup.add(naveBody);
 
-  // Steep dark slate-blue gable roof crowning the Cathedral Nave
-  const naveRoof = new THREE.Mesh(track(createSteepRoofGeometry(29.6, 20.0, 46.0)), slateRoofMat);
-  naveRoof.position.set(0, facadeBaseY + 44.0, facadeZ - 22.0);
+  const naveRoof = new THREE.Mesh(track(createSteepRoofGeometry(70.0, 56.0, 102.0)), slateRoofMat);
+  naveRoof.position.set(0, facadeBaseY + 118.0, facadeZ - 49.0);
   academyCastleGroup.add(naveRoof);
 
-  // Front Gothic Gable Pediment Wall WITH pointed portal cutout so recessed cathedral doors show!
+  // Pointed Gable Front Wall with deep Portal Arch Cutout
   const gableFront = new THREE.Mesh(
-    track(createGableArchWallGeometry(28.0, 44.0, 64.0, 10.6, 16.4, 1.4)),
+    track(createGableArchWallGeometry(66.0, 118.0, 174.0, 22.0, 38.0, 3.2)),
     limestoneMat,
   );
-  gableFront.position.set(0, facadeBaseY, facadeZ + 0.1);
+  gableFront.position.set(0, facadeBaseY, facadeZ + 0.2);
   academyCastleGroup.add(gableFront);
 
-  // Recessed Pointed-Arch Portal with Nested Archivolts & Sealed Cathedral Doors
+  // Recessed Multi-Order Gothic Portal Moldings & Sealed Double Cathedral Doors
   for (let order = 0; order < 3; order++) {
-    const w = 12.6 - order * 1.3;
-    const h = 18.0 - order * 1.1;
+    const w = 26.5 - order * 2.6;
+    const h = 42.0 - order * 2.4;
     const archOrderGeo = track(
-      new THREE.ExtrudeGeometry(createArchShape(w, h, 1.45), {
-        depth: 1.4,
+      new THREE.ExtrudeGeometry(createArchShape(w, h, 2.8), {
+        depth: 2.6,
         bevelEnabled: true,
-        bevelSize: 0.08,
-        bevelThickness: 0.08,
+        bevelSize: 0.14,
+        bevelThickness: 0.14,
       }),
     );
-    archOrderGeo.translate(0, 0, -0.7);
+    archOrderGeo.translate(0, 0, -1.3);
     const archOrder = new THREE.Mesh(archOrderGeo, order === 1 ? carvedRibMat : limestoneMat);
-    archOrder.position.set(0, facadeBaseY, facadeZ + 1.5 - order * 0.85);
+    archOrder.position.set(0, facadeBaseY, facadeZ + 2.8 - order * 1.6);
     academyCastleGroup.add(archOrder);
   }
 
-  // Steep Pointed Gable Hood Pediment directly above Portal Arch (apex stops cleanly below lancets)
   const portalPediment = new THREE.Mesh(
-    track(createGableArchWallGeometry(17.5, 11.0, 22.8, 11.8, 17.4, 1.6)),
+    track(createGableArchWallGeometry(36.0, 24.0, 52.0, 24.0, 39.0, 2.8)),
     carvedRibMat,
   );
-  portalPediment.position.set(0, facadeBaseY, facadeZ + 1.7);
+  portalPediment.position.set(0, facadeBaseY, facadeZ + 3.0);
   academyCastleGroup.add(portalPediment);
 
-  // Sealed Double Cathedral Doors deeply recessed inside the portal arch
   for (const side of [-1, 1]) {
-    const cDoor = new THREE.Mesh(track(new THREE.BoxGeometry(5.1, 16.2, 0.8)), slateRoofMat);
-    cDoor.position.set(side * 2.6, facadeBaseY + 8.1, facadeZ - 0.8);
+    const cDoor = new THREE.Mesh(track(new THREE.BoxGeometry(10.6, 37.0, 1.4)), slateRoofMat);
+    cDoor.position.set(side * 5.4, facadeBaseY + 18.5, facadeZ - 1.6);
     academyCastleGroup.add(cDoor);
-    for (const sy of [3.0, 7.0, 11.0, 14.2]) {
-      const band = new THREE.Mesh(track(new THREE.BoxGeometry(4.9, 0.34, 0.96)), blackIronMat);
-      band.position.set(side * 2.6, facadeBaseY + sy, facadeZ - 0.8);
+    for (const sy of [6.0, 14.5, 23.0, 31.5]) {
+      const band = new THREE.Mesh(track(new THREE.BoxGeometry(10.2, 0.7, 1.7)), blackIronMat);
+      band.position.set(side * 5.4, facadeBaseY + sy, facadeZ - 1.6);
       academyCastleGroup.add(band);
     }
   }
-  const cathSealOuter = new THREE.Mesh(track(new THREE.TorusGeometry(2.6, 0.16, 8, 28)), soulCyanMat);
-  cathSealOuter.position.set(0, facadeBaseY + 8.5, facadeZ - 0.32);
+  const arcaneSealMat = track(
+    new THREE.MeshStandardMaterial({
+      color: 0x5cc8ff,
+      emissive: new THREE.Color(0x2884d8),
+      emissiveIntensity: 1.7,
+      roughness: 0.22,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.82,
+    }),
+  );
+  const cathSealOuter = new THREE.Mesh(track(new THREE.TorusGeometry(4.8, 0.16, 8, 36)), arcaneSealMat);
+  cathSealOuter.position.set(0, facadeBaseY + 19.0, facadeZ - 0.82);
   academyCastleGroup.add(cathSealOuter);
+  const cathSealInner = new THREE.Mesh(track(new THREE.TorusGeometry(3.0, 0.11, 8, 28)), arcaneSealMat);
+  cathSealInner.position.set(0, facadeBaseY + 19.0, facadeZ - 0.82);
+  academyCastleGroup.add(cathSealInner);
+  void soulCyanMat;
 
-  // Three Tall Glowing Warm-Gold Lancet Windows centered directly beneath the Rose Window!
-  const mainLancetGeo = track(new THREE.ShapeGeometry(createPointedWindowShape(2.2, 10.6)));
-  const centerLancetGeo = track(new THREE.ShapeGeometry(createPointedWindowShape(2.5, 12.2)));
+  // Triple Tall Glowing Warm-Gold Lancet Windows beneath Rose Window
+  const mainLancetGeo = track(new THREE.ShapeGeometry(createPointedWindowShape(5.2, 27.5)));
+  const centerLancetGeo = track(new THREE.ShapeGeometry(createPointedWindowShape(5.8, 32.0)));
   const lancetFrameGeo = track(
-    new THREE.ExtrudeGeometry(createArchShape(2.3, 10.7, 0.45), { depth: 0.65, bevelEnabled: false }),
+    new THREE.ExtrudeGeometry(createArchShape(5.4, 27.8, 0.9), { depth: 1.2, bevelEnabled: false }),
   );
-  lancetFrameGeo.translate(0, 0, -0.325);
+  lancetFrameGeo.translate(0, 0, -0.6);
   const centerFrameGeo = track(
-    new THREE.ExtrudeGeometry(createArchShape(2.6, 12.3, 0.48), { depth: 0.65, bevelEnabled: false }),
+    new THREE.ExtrudeGeometry(createArchShape(6.0, 32.3, 1.0), { depth: 1.2, bevelEnabled: false }),
   );
-  centerFrameGeo.translate(0, 0, -0.325);
+  centerFrameGeo.translate(0, 0, -0.6);
 
   for (const [lx, isCenter] of [
-    [-4.0, false],
+    [-9.6, false],
     [0.0, true],
-    [4.0, false],
+    [9.6, false],
   ] as const) {
-    const wy = facadeBaseY + 24.4;
+    const wy = facadeBaseY + 58.0;
     const glass = new THREE.Mesh(isCenter ? centerLancetGeo : mainLancetGeo, goldLancetMat);
-    glass.position.set(lx, wy, facadeZ + 0.96);
+    glass.position.set(lx, wy, facadeZ + 2.0);
     academyCastleGroup.add(glass);
 
     const frame = new THREE.Mesh(isCenter ? centerFrameGeo : lancetFrameGeo, carvedRibMat);
-    frame.position.set(lx, wy, facadeZ + 1.02);
+    frame.position.set(lx, wy, facadeZ + 2.15);
     academyCastleGroup.add(frame);
 
-    // Fine vertical stone tracery mullion inside each lancet
     const mullion = new THREE.Mesh(
-      track(new THREE.BoxGeometry(0.18, isCenter ? 11.0 : 9.4, 0.25)),
+      track(new THREE.BoxGeometry(0.4, isCenter ? 28.5 : 24.5, 0.5)),
       carvedRibMat,
     );
-    mullion.position.set(lx, wy + (isCenter ? 5.5 : 4.7), facadeZ + 1.05);
+    mullion.position.set(lx, wy + (isCenter ? 14.2 : 12.2), facadeZ + 2.2);
     academyCastleGroup.add(mullion);
   }
 
-  // Bright Intricate Circular Rose Window centered above the 3 Lancets!
-  const roseY = facadeBaseY + 42.4;
-  const roseZ = facadeZ + 1.08;
+  // Colossal Intricately Spoked Glowing Rose Window (diameter = 22.8m!)
+  const roseY = facadeBaseY + 112.0;
+  const roseZ = facadeZ + 2.2;
   const roseGroup = new THREE.Group();
   roseGroup.position.set(0, roseY, roseZ);
   academyCastleGroup.add(roseGroup);
 
-  const roseGlass = new THREE.Mesh(track(new THREE.CircleGeometry(4.75, 32)), roseGlassMat);
+  const roseGlass = new THREE.Mesh(track(new THREE.CircleGeometry(11.2, 36)), roseGlassMat);
   roseGroup.add(roseGlass);
-
-  const roseOuterRim = new THREE.Mesh(track(new THREE.TorusGeometry(4.85, 0.52, 10, 36)), carvedRibMat);
-  roseOuterRim.position.z = 0.14;
+  const roseOuterRim = new THREE.Mesh(track(new THREE.TorusGeometry(11.4, 1.15, 10, 40)), carvedRibMat);
+  roseOuterRim.position.z = 0.32;
   roseGroup.add(roseOuterRim);
-
-  const roseInnerRing = new THREE.Mesh(track(new THREE.TorusGeometry(2.45, 0.2, 8, 28)), carvedRibMat);
-  roseInnerRing.position.z = 0.18;
+  const roseInnerRing = new THREE.Mesh(track(new THREE.TorusGeometry(5.8, 0.45, 8, 32)), carvedRibMat);
+  roseInnerRing.position.z = 0.4;
   roseGroup.add(roseInnerRing);
-
-  const roseHubRing = new THREE.Mesh(track(new THREE.TorusGeometry(0.85, 0.18, 8, 20)), carvedRibMat);
-  roseHubRing.position.z = 0.2;
+  const roseHubRing = new THREE.Mesh(track(new THREE.TorusGeometry(2.0, 0.4, 8, 24)), carvedRibMat);
+  roseHubRing.position.z = 0.45;
   roseGroup.add(roseHubRing);
 
-  // 12 radial tracery spokes & outer trefoil petal rings
-  for (let s = 0; s < 12; s++) {
-    const a = (s / 12) * Math.PI * 2;
-    const spoke = new THREE.Mesh(track(new THREE.BoxGeometry(0.18, 9.2, 0.22)), carvedRibMat);
+  for (let s = 0; s < 16; s++) {
+    const a = (s / 16) * Math.PI * 2;
+    const spoke = new THREE.Mesh(track(new THREE.BoxGeometry(0.4, 21.8, 0.48)), carvedRibMat);
     spoke.rotation.z = a;
-    spoke.position.z = 0.16;
+    spoke.position.z = 0.36;
     roseGroup.add(spoke);
 
-    const petal = new THREE.Mesh(track(new THREE.TorusGeometry(0.62, 0.11, 6, 14)), carvedRibMat);
-    petal.position.set(Math.cos(a) * 3.65, Math.sin(a) * 3.65, 0.18);
+    const petal = new THREE.Mesh(track(new THREE.TorusGeometry(1.35, 0.24, 6, 16)), carvedRibMat);
+    petal.position.set(Math.cos(a) * 8.6, Math.sin(a) * 8.6, 0.4);
     roseGroup.add(petal);
   }
 
-  // Clustered Vertical Pinnacles, Facade Flanking Buttress Turrets & Twin Gable Towers
+  // Flanking Side Wings along Forecourt Terraces (x: ±33..±76, z: -86) framing the Main Cathedral
+  for (const side of [-1, 1]) {
+    const wingWall = new THREE.Mesh(track(new THREE.BoxGeometry(44.0, 68.0, 32.0)), limestoneMat);
+    wingWall.position.set(side * 55.0, facadeBaseY + 34.0, facadeZ - 16.0);
+    academyCastleGroup.add(wingWall);
+
+    const wingRoof = new THREE.Mesh(track(createSteepRoofGeometry(34.0, 26.0, 46.0)), slateRoofMat);
+    wingRoof.rotation.y = Math.PI / 2;
+    wingRoof.position.set(side * 55.0, facadeBaseY + 68.0, facadeZ - 16.0);
+    academyCastleGroup.add(wingRoof);
+
+    for (const wxOffset of [-12, 0, 12]) {
+      const wGlass = new THREE.Mesh(mainLancetGeo, goldLancetMat);
+      wGlass.scale.setScalar(0.75);
+      wGlass.position.set(side * 55.0 + wxOffset, facadeBaseY + 28.0, facadeZ + 0.15);
+      academyCastleGroup.add(wGlass);
+    }
+  }
+
+  // Clustered Vertical Pinnacles, Buttress Turrets & Needle Spires (InstancedMesh)
   const pinnacleColGeo = track(new THREE.BoxGeometry(2.2, 1.0, 2.2));
   pinnacleColGeo.translate(0, 0.5, 0);
   const pinnacleSpireGeo = track(new THREE.ConeGeometry(1.45, 1.0, 4));
@@ -1399,25 +1694,21 @@ export function buildSunkenAcademy({
   pinnacleSpireGeo.translate(0, 0.5, 0);
 
   const facadePinnacles: Array<{ x: number; y: number; z: number; w: number; h: number; sh: number }> = [
-    // Flanking main facade clustered buttress pinnacles
-    { x: -13.6, y: facadeBaseY, z: facadeZ + 1.0, w: 1.5, h: 48, sh: 18 },
-    { x: 13.6, y: facadeBaseY, z: facadeZ + 1.0, w: 1.5, h: 48, sh: 18 },
-    { x: -9.5, y: facadeBaseY, z: facadeZ + 1.2, w: 1.15, h: 45, sh: 14 },
-    { x: 9.5, y: facadeBaseY, z: facadeZ + 1.2, w: 1.15, h: 45, sh: 14 },
-    // Center peak finial pinnacle above Rose Window gable
-    { x: 0, y: facadeBaseY + 62, z: facadeZ + 0.5, w: 0.9, h: 6, sh: 12 },
-    // Secondary flanking bell-turrets beside main Cathedral elevation
-    { x: -18.5, y: facadeBaseY + 2, z: facadeZ - 6.0, w: 2.1, h: 46, sh: 20 },
-    { x: 18.5, y: facadeBaseY + 2, z: facadeZ - 6.0, w: 2.1, h: 46, sh: 20 },
-    // Nave side buttress pinnacles (5 pairs along the cathedral flanks)
+    { x: -32.5, y: facadeBaseY, z: facadeZ + 2.0, w: 3.4, h: 128, sh: 48 },
+    { x: 32.5, y: facadeBaseY, z: facadeZ + 2.0, w: 3.4, h: 128, sh: 48 },
+    { x: -22.5, y: facadeBaseY, z: facadeZ + 2.4, w: 2.6, h: 122, sh: 38 },
+    { x: 22.5, y: facadeBaseY, z: facadeZ + 2.4, w: 2.6, h: 122, sh: 38 },
+    { x: 0, y: facadeBaseY + 170, z: facadeZ + 1.0, w: 2.0, h: 14, sh: 32 },
+    { x: -44.0, y: facadeBaseY + 4, z: facadeZ - 12.0, w: 4.5, h: 124, sh: 52 },
+    { x: 44.0, y: facadeBaseY + 4, z: facadeZ - 12.0, w: 4.5, h: 124, sh: 52 },
     ...[-1, 1].flatMap((side) =>
-      [0, 1, 2, 3, 4].map((i) => ({
-        x: side * 19.5,
-        y: facadeBaseY + 2,
-        z: facadeZ - 12 - i * 8.5,
-        w: 1.25,
-        h: 36,
-        sh: 13,
+      [0, 1, 2, 3, 4, 5].map((i) => ({
+        x: side * 46.0,
+        y: facadeBaseY + 4,
+        z: facadeZ - 26 - i * 14.5,
+        w: 2.8,
+        h: 98,
+        sh: 34,
       })),
     ),
   ];
@@ -1442,14 +1733,14 @@ export function buildSunkenAcademy({
   pinSpiresInst.computeBoundingSphere();
   academyCastleGroup.add(pinColsInst, pinSpiresInst);
 
-  // Flying Buttresses along both flanks of the Cathedral Nave (InstancedMesh)
-  const fbArchGeo = track(new THREE.BoxGeometry(8.5, 2.2, 1.8));
-  const fbArches = new THREE.InstancedMesh(fbArchGeo, carvedRibMat, 10);
+  // Monumental Flying Buttresses along both flanks of the Cathedral Nave (InstancedMesh)
+  const fbArchGeo = track(new THREE.BoxGeometry(20.0, 5.2, 3.8));
+  const fbArches = new THREE.InstancedMesh(fbArchGeo, carvedRibMat, 12);
   let fbIdx = 0;
-  for (let i = 0; i < 5; i++) {
-    const bz = facadeZ - 12 - i * 8.5;
+  for (let i = 0; i < 6; i++) {
+    const bz = facadeZ - 26 - i * 14.5;
     for (const side of [-1, 1]) {
-      dummy.position.set(side * 16.5, facadeBaseY + 34.0, bz);
+      dummy.position.set(side * 39.0, facadeBaseY + 92.0, bz);
       dummy.rotation.set(0, 0, -side * 0.46);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
@@ -1460,10 +1751,10 @@ export function buildSunkenAcademy({
   fbArches.computeBoundingSphere();
   academyCastleGroup.add(fbArches);
 
-  // High-Arched Stone Viaduct Extending Off the Left Flank (matching image_aa7d714b.png!)
+  // High-Arched Stone Viaduct Sweeping off the Left Flank (2.4x W x 2.8x H, piers grounded deep below lake waterline!)
   const leftViaductBays = 6;
-  const leftViaductBayGeo = track(createGothicBayGeometry(11.5, 36.0, 7.6, 26.0, 5.2));
-  const leftViaductGalleryGeo = track(createGothicBayGeometry(3.8, 5.5, 2.2, 4.2, 4.4));
+  const leftViaductBayGeo = track(createGothicBayGeometry(24.0, 124.0, 16.0, 92.0, 11.0));
+  const leftViaductGalleryGeo = track(createGothicBayGeometry(8.0, 14.0, 4.6, 10.5, 9.2));
   const leftViaductInst = new THREE.InstancedMesh(leftViaductBayGeo, limestoneMat, leftViaductBays);
   const leftViaductGalleryInst = new THREE.InstancedMesh(
     leftViaductGalleryGeo,
@@ -1473,28 +1764,26 @@ export function buildSunkenAcademy({
   const leftViaductPins = new THREE.InstancedMesh(pinnacleSpireGeo, slateRoofMat, leftViaductBays);
 
   for (let i = 0; i < leftViaductBays; i++) {
-    const vx = -24.5 - i * 11.4;
-    const vz = facadeZ + 6.0 - i * 1.2;
-    dummy.position.set(vx, 8.0, vz);
+    const vx = -58.0 - i * 23.8;
+    const vz = facadeZ - 14.0 - i * 2.4;
+    dummy.position.set(vx, -10.0, vz);
     dummy.rotation.set(0, 0.1, 0);
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
     leftViaductInst.setMatrixAt(i, dummy.matrix);
 
-    // Three pierced upper gallery arches per main viaduct bay
     for (let g = 0; g < 3; g++) {
-      const gx = vx - 3.8 + g * 3.8;
-      dummy.position.set(gx, 44.0, vz - 0.38 + g * 0.38);
+      const gx = vx - 8.0 + g * 8.0;
+      dummy.position.set(gx, 114.0, vz - 0.8 + g * 0.8);
       dummy.rotation.set(0, 0.1, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       leftViaductGalleryInst.setMatrixAt(i * 3 + g, dummy.matrix);
     }
 
-    // Pier pinnacle atop each viaduct pier
-    dummy.position.set(vx - 5.6, 49.5, vz - 0.56);
+    dummy.position.set(vx - 11.8, 128.0, vz - 1.18);
     dummy.rotation.set(0, 0.1, 0);
-    dummy.scale.set(1.3, 11.0, 1.3);
+    dummy.scale.set(2.8, 28.0, 2.8);
     dummy.updateMatrix();
     leftViaductPins.setMatrixAt(i, dummy.matrix);
   }
@@ -1507,207 +1796,354 @@ export function buildSunkenAcademy({
   academyCastleGroup.add(leftViaductInst, leftViaductGalleryInst, leftViaductPins);
 
   // -------------------------------------------------------------------------
-  // 3D. UPPER CITADEL SKYLINE: LEFT CATHEDRAL WING, ARCH BRIDGE & RIGHT CITADEL CLUSTER
+  // 3D. EXPANDED LEFT WING, OCTAGONAL DOME ROTUNDA & UPPER ASTRAL CITADEL TIER
   // -------------------------------------------------------------------------
-  // 1. Left Cathedral Wing (on left rocky plateau x = -46, z = -92)
+  // 1. Left Cathedral Wing (scaled 2.4x W / 2.8x H on left rocky plateau)
   const leftWingGroup = new THREE.Group();
-  leftWingGroup.position.set(-46.0, 26.0, -92.0);
+  leftWingGroup.position.set(-108.0, 52.0, -138.0);
   leftWingGroup.rotation.y = 0.22;
   academyCastleGroup.add(leftWingGroup);
 
-  const lwMain = new THREE.Mesh(track(new THREE.BoxGeometry(22.0, 32.0, 36.0)), limestoneMat);
-  lwMain.position.set(0, 16.0, 0);
+  const lwMain = new THREE.Mesh(track(new THREE.BoxGeometry(52.0, 88.0, 84.0)), limestoneMat);
+  lwMain.position.set(0, 44.0, 0);
   leftWingGroup.add(lwMain);
-
-  const lwRoof = new THREE.Mesh(track(createSteepRoofGeometry(23.6, 17.0, 37.6)), slateRoofMat);
-  lwRoof.position.set(0, 32.0, 0);
+  const lwRoof = new THREE.Mesh(track(createSteepRoofGeometry(56.0, 46.0, 88.0)), slateRoofMat);
+  lwRoof.position.set(0, 88.0, 0);
   leftWingGroup.add(lwRoof);
 
-  // Stepped upper clerestory hall & needle spire on Left Wing
-  const lwUpper = new THREE.Mesh(track(new THREE.BoxGeometry(14.0, 22.0, 22.0)), limestoneMat);
-  lwUpper.position.set(-2.0, 36.0, -4.0);
+  const lwUpper = new THREE.Mesh(track(new THREE.BoxGeometry(34.0, 62.0, 52.0)), limestoneMat);
+  lwUpper.position.set(-4.0, 96.0, -10.0);
   leftWingGroup.add(lwUpper);
-  const lwUpperRoof = new THREE.Mesh(track(createSteepRoofGeometry(15.2, 13.0, 23.2)), slateRoofMat);
-  lwUpperRoof.position.set(-2.0, 47.0, -4.0);
+  const lwUpperRoof = new THREE.Mesh(track(createSteepRoofGeometry(36.0, 36.0, 54.0)), slateRoofMat);
+  lwUpperRoof.position.set(-4.0, 127.0, -10.0);
   leftWingGroup.add(lwUpperRoof);
 
-  const lwSpireShaft = new THREE.Mesh(track(new THREE.CylinderGeometry(3.2, 4.0, 24.0, 8)), limestoneMat);
-  lwSpireShaft.position.set(-4.0, 46.0, -8.0);
+  const lwSpireShaft = new THREE.Mesh(track(new THREE.CylinderGeometry(7.5, 9.5, 64.0, 8)), limestoneMat);
+  lwSpireShaft.position.set(-8.0, 126.0, -18.0);
   leftWingGroup.add(lwSpireShaft);
-  const lwSpireNeedle = new THREE.Mesh(track(new THREE.ConeGeometry(3.9, 22.0, 8)), slateRoofMat);
-  lwSpireNeedle.position.set(-4.0, 69.0, -8.0);
+  const lwSpireNeedle = new THREE.Mesh(track(new THREE.ConeGeometry(9.2, 62.0, 8)), slateRoofMat);
+  lwSpireNeedle.position.set(-8.0, 189.0, -18.0);
   leftWingGroup.add(lwSpireNeedle);
 
-  // Glowing golden lancet windows on Left Wing front face
-  const smallLancetGeo = track(new THREE.ShapeGeometry(createPointedWindowShape(1.6, 7.6)));
-  for (const wx of [-5.2, 0, 5.2]) {
+  const smallLancetGeo = track(new THREE.ShapeGeometry(createPointedWindowShape(3.6, 19.5)));
+  for (const wx of [-12.0, 0, 12.0]) {
     const win = new THREE.Mesh(smallLancetGeo, goldLancetMat);
-    win.position.set(wx, 18.0, 18.15);
+    win.position.set(wx, 46.0, 42.2);
     leftWingGroup.add(win);
   }
 
-  // 2. Graceful Elevated Stone Arch Bridge linking Left Cathedral Wing to Right Citadel Cluster!
-  const skyBridgeGroup = new THREE.Group();
-  skyBridgeGroup.position.set(-2.0, 38.0, -96.0);
-  academyCastleGroup.add(skyBridgeGroup);
-
-  const skyBridgeBays = 6;
-  const skyBayGeo = track(createGothicBayGeometry(9.2, 12.0, 6.2, 9.2, 4.4));
-  const skyBaysInst = new THREE.InstancedMesh(skyBayGeo, limestoneMat, skyBridgeBays);
-  const skyBridgeDeck = new THREE.Mesh(track(new THREE.BoxGeometry(56.0, 1.2, 5.0)), carvedRibMat);
-  skyBridgeDeck.position.set(0, 12.2, 0);
-  skyBridgeGroup.add(skyBridgeDeck);
-
-  for (let i = 0; i < skyBridgeBays; i++) {
-    const bx = -23.0 + i * 9.2;
-    dummy.position.set(bx, 0, 0);
-    dummy.rotation.set(0, 0, 0);
-    dummy.scale.set(1, 1, 1);
-    dummy.updateMatrix();
-    skyBaysInst.setMatrixAt(i, dummy.matrix);
-  }
-  skyBaysInst.instanceMatrix.needsUpdate = true;
-  skyBaysInst.computeBoundingSphere();
-  skyBridgeGroup.add(skyBaysInst);
-
-  // 3. Right Citadel Cluster (Highest Rocky Peak: Octagonal Ribbed-Dome Rotunda + Ultra-Tall Spire Tower!)
-  // 3a. Grand Octagonal Gothic Rotunda with Dark Slate Ribbed Dome & Finial (x = +34, z = -82)
+  // 2. Expanded Octagonal Dome Rotunda with Double-Tiered Gallery Windows, Buttress Ribs & Upper Wrap-Around Balcony
   const rotundaGroup = new THREE.Group();
-  rotundaGroup.position.set(34.0, 26.0, -82.0);
+  rotundaGroup.position.set(92.0, 52.0, -124.0);
   academyCastleGroup.add(rotundaGroup);
 
-  const rotundaBase = new THREE.Mesh(track(new THREE.CylinderGeometry(14.8, 16.4, 8.0, 8)), limestoneMat);
-  rotundaBase.position.y = 4.0;
+  const rotundaBase = new THREE.Mesh(track(new THREE.CylinderGeometry(35.0, 41.0, 44.0, 8)), limestoneMat);
+  rotundaBase.position.y = -2.0;
   rotundaBase.rotation.y = Math.PI / 8;
   rotundaGroup.add(rotundaBase);
 
-  const rotundaDrum = new THREE.Mesh(track(new THREE.CylinderGeometry(13.2, 13.8, 26.0, 8)), limestoneMat);
-  rotundaDrum.position.y = 21.0;
+  const rotundaDrum = new THREE.Mesh(track(new THREE.CylinderGeometry(31.5, 33.0, 72.0, 8)), limestoneMat);
+  rotundaDrum.position.y = 56.0;
   rotundaDrum.rotation.y = Math.PI / 8;
   rotundaGroup.add(rotundaDrum);
 
-  const rotundaCornice = new THREE.Mesh(track(new THREE.CylinderGeometry(14.5, 13.4, 2.2, 8)), carvedRibMat);
-  rotundaCornice.position.y = 34.5;
+  const rotundaCornice = new THREE.Mesh(track(new THREE.CylinderGeometry(35.5, 32.0, 5.5, 8)), carvedRibMat);
+  rotundaCornice.position.y = 94.5;
   rotundaCornice.rotation.y = Math.PI / 8;
   rotundaGroup.add(rotundaCornice);
 
-  // 8 recessed glowing lancet windows + corner limestone pilasters around the octagonal rotunda
+  // Upper wrap-around exterior balcony walkway & ringed parapet around Rotunda crown
+  const rotundaBalcony = new THREE.Mesh(track(new THREE.CylinderGeometry(37.5, 35.0, 2.2, 8)), carvedRibMat);
+  rotundaBalcony.position.y = 91.5;
+  rotundaBalcony.rotation.y = Math.PI / 8;
+  rotundaGroup.add(rotundaBalcony);
+
+  // Double-tiered glowing lancet gallery windows + 8 exterior stone buttress ribs
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
-    const win = new THREE.Mesh(smallLancetGeo, goldLancetMat);
-    win.position.set(Math.sin(a) * 12.6, 19.0, Math.cos(a) * 12.6);
-    win.rotation.y = a;
-    rotundaGroup.add(win);
+    for (const wy of [38.0, 68.0]) {
+      const win = new THREE.Mesh(smallLancetGeo, goldLancetMat);
+      win.position.set(Math.sin(a) * 30.2, wy, Math.cos(a) * 30.2);
+      win.rotation.y = a;
+      rotundaGroup.add(win);
+    }
 
     const cornerA = a + Math.PI / 8;
-    const pilaster = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 28.0, 1.8)), carvedRibMat);
-    pilaster.position.set(Math.sin(cornerA) * 13.6, 21.0, Math.cos(cornerA) * 13.6);
+    const pilaster = new THREE.Mesh(track(new THREE.BoxGeometry(3.8, 76.0, 4.4)), carvedRibMat);
+    pilaster.position.set(Math.sin(cornerA) * 33.2, 56.0, Math.cos(cornerA) * 33.2);
     pilaster.rotation.y = cornerA;
     rotundaGroup.add(pilaster);
   }
 
-  // Dark Slate Ribbed Octagonal Dome (LatheGeometry curved dome + 8 raised pale carved ribs + cupola finial)
   const domePts: THREE.Vector2[] = [];
   for (let i = 0; i <= 10; i++) {
     const t = i / 10;
-    const r = Math.cos(t * Math.PI * 0.5) * 13.6;
-    const y = Math.sin(t * Math.PI * 0.5) * 15.5;
-    domePts.push(new THREE.Vector2(Math.max(1.2, r), y));
+    const r = Math.cos(t * Math.PI * 0.5) * 32.5;
+    const y = Math.sin(t * Math.PI * 0.5) * 42.0;
+    domePts.push(new THREE.Vector2(Math.max(2.6, r), y));
   }
   const domeGeo = track(new THREE.LatheGeometry(domePts, 8));
   domeGeo.rotateY(Math.PI / 8);
   const rotundaDome = new THREE.Mesh(domeGeo, slateRoofMat);
-  rotundaDome.position.y = 35.4;
+  rotundaDome.position.y = 97.0;
   rotundaGroup.add(rotundaDome);
 
-  // Raised limestone dome ribs along the 8 octagonal ridges
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
     const ribCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(Math.sin(a) * 13.7, 35.4, Math.cos(a) * 13.7),
-      new THREE.Vector3(Math.sin(a) * 10.2, 45.2, Math.cos(a) * 10.2),
-      new THREE.Vector3(Math.sin(a) * 1.6, 51.0, Math.cos(a) * 1.6),
+      new THREE.Vector3(Math.sin(a) * 32.8, 97.0, Math.cos(a) * 32.8),
+      new THREE.Vector3(Math.sin(a) * 24.5, 123.0, Math.cos(a) * 24.5),
+      new THREE.Vector3(Math.sin(a) * 3.8, 139.0, Math.cos(a) * 3.8),
     ]);
-    const rib = new THREE.Mesh(track(new THREE.TubeGeometry(ribCurve, 8, 0.34, 5, false)), carvedRibMat);
+    const rib = new THREE.Mesh(track(new THREE.TubeGeometry(ribCurve, 8, 0.85, 5, false)), carvedRibMat);
     rotundaGroup.add(rib);
   }
 
-  // Lantern cupola & spire finial atop the ribbed dome
-  const cupola = new THREE.Mesh(track(new THREE.CylinderGeometry(2.2, 2.5, 5.5, 8)), carvedRibMat);
-  cupola.position.y = 52.8;
+  const cupola = new THREE.Mesh(track(new THREE.CylinderGeometry(5.2, 5.8, 14.0, 8)), carvedRibMat);
+  cupola.position.y = 144.0;
   rotundaGroup.add(cupola);
-  const cupolaCone = new THREE.Mesh(track(new THREE.ConeGeometry(2.6, 8.8, 8)), slateRoofMat);
-  cupolaCone.position.y = 59.8;
+  const cupolaCone = new THREE.Mesh(track(new THREE.ConeGeometry(6.0, 24.0, 8)), slateRoofMat);
+  cupolaCone.position.y = 163.0;
   rotundaGroup.add(cupolaCone);
 
-  // 3b. Ultra-Tall Slender Multi-Story Spire Tower standing directly beside the Rotunda (x = +48, z = -98)
-  const spireTowerGroup = new THREE.Group();
-  spireTowerGroup.position.set(48.0, 24.0, -98.0);
-  academyCastleGroup.add(spireTowerGroup);
+  // Elevated Arched Stone Sky-Bridges linking Left Wing <-> Main Cathedral <-> Rotunda <-> Rear Observatory
+  const skyBridgeGeo = track(createGothicBayGeometry(16.0, 24.0, 11.0, 18.0, 8.0));
+  const skyBridgeMatrices: Array<{ x: number; y: number; z: number; ry: number }> = [];
+  for (let i = 0; i < 4; i++) {
+    skyBridgeMatrices.push({ x: -84 + i * 16, y: 102.0, z: -136, ry: -0.15 });
+    skyBridgeMatrices.push({ x: 34 + i * 16, y: 102.0, z: -124, ry: 0.22 });
+  }
+  const skyBridgesInst = new THREE.InstancedMesh(skyBridgeGeo, limestoneMat, skyBridgeMatrices.length);
+  skyBridgeMatrices.forEach((sb, idx) => {
+    dummy.position.set(sb.x, sb.y, sb.z);
+    dummy.rotation.set(0, sb.ry, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    skyBridgesInst.setMatrixAt(idx, dummy.matrix);
+  });
+  skyBridgesInst.instanceMatrix.needsUpdate = true;
+  skyBridgesInst.computeBoundingSphere();
+  academyCastleGroup.add(skyBridgesInst);
 
-  // Multi-story stepped shaft (Base -> Lower Tier -> Mid Recessed Tier -> Upper Belfry -> Slender Needle Peak)
-  const stBase = new THREE.Mesh(track(new THREE.BoxGeometry(15.0, 22.0, 15.0)), limestoneMat);
-  stBase.position.y = 11.0;
-  spireTowerGroup.add(stBase);
+  // 3. TOWERING UPPER ASTRAL CITADEL TIER (Dwarfs & Owns 100% of Horizon Behind Main Cathedral!)
+  // 3a. Colossal Central Grand Observatory Spire (local x = 0, z = -156, soaring to local y = 318m!)
+  const obsGroup = new THREE.Group();
+  obsGroup.position.set(0, 58.0, -156.0);
+  academyCastleGroup.add(obsGroup);
 
-  const stStory2 = new THREE.Mesh(track(new THREE.BoxGeometry(12.2, 26.0, 12.2)), limestoneMat);
-  stStory2.position.y = 35.0;
-  spireTowerGroup.add(stStory2);
+  const obsKeepBase = new THREE.Mesh(track(new THREE.BoxGeometry(52.0, 74.0, 52.0)), limestoneMat);
+  obsKeepBase.position.y = 37.0;
+  obsGroup.add(obsKeepBase);
 
-  const stStory3 = new THREE.Mesh(track(new THREE.CylinderGeometry(5.6, 6.4, 24.0, 8)), limestoneMat);
-  stStory3.position.y = 60.0;
-  stStory3.rotation.y = Math.PI / 8;
-  spireTowerGroup.add(stStory3);
+  const obsTier2 = new THREE.Mesh(track(new THREE.BoxGeometry(40.0, 62.0, 40.0)), limestoneMat);
+  obsTier2.position.y = 105.0;
+  obsGroup.add(obsTier2);
 
-  const stBelfry = new THREE.Mesh(track(new THREE.CylinderGeometry(6.6, 5.8, 5.5, 8)), carvedRibMat);
-  stBelfry.position.y = 74.0;
-  stBelfry.rotation.y = Math.PI / 8;
-  spireTowerGroup.add(stBelfry);
+  const obsDrum = new THREE.Mesh(track(new THREE.CylinderGeometry(16.5, 19.0, 58.0, 8)), limestoneMat);
+  obsDrum.position.y = 165.0;
+  obsDrum.rotation.y = Math.PI / 8;
+  obsGroup.add(obsDrum);
 
-  const stPeak = new THREE.Mesh(track(new THREE.ConeGeometry(6.2, 34.0, 8)), slateRoofMat);
-  stPeak.position.y = 93.5;
-  stPeak.rotation.y = Math.PI / 8;
-  spireTowerGroup.add(stPeak);
+  const obsBelfry = new THREE.Mesh(track(new THREE.CylinderGeometry(20.0, 17.0, 14.0, 8)), carvedRibMat);
+  obsBelfry.position.y = 200.0;
+  obsBelfry.rotation.y = Math.PI / 8;
+  obsGroup.add(obsBelfry);
 
-  const stFinial = new THREE.Mesh(track(new THREE.CylinderGeometry(0.18, 0.38, 9.0, 6)), carvedRibMat);
-  stFinial.position.y = 113.0;
-  spireTowerGroup.add(stFinial);
+  const obsSpire = new THREE.Mesh(track(new THREE.ConeGeometry(18.5, 86.0, 8)), slateRoofMat);
+  obsSpire.position.y = 249.0;
+  obsSpire.rotation.y = Math.PI / 8;
+  obsGroup.add(obsSpire);
 
-  // Corner buttress ribs + recessed vertical warm-gold window bays along the spire tower
-  const slenderSlitGeo = track(new THREE.BoxGeometry(0.95, 11.5, 0.4));
+  const obsFinial = new THREE.Mesh(track(new THREE.CylinderGeometry(0.45, 0.9, 20.0, 6)), carvedRibMat);
+  obsFinial.position.y = 298.0;
+  obsGroup.add(obsFinial);
+
+  const obsSlitGeo = track(new THREE.BoxGeometry(2.2, 28.0, 0.8));
   for (let face = 0; face < 4; face++) {
     const a = (face / 4) * Math.PI * 2;
-    for (const offset of [-2.2, 2.2]) {
-      const slit2 = new THREE.Mesh(slenderSlitGeo, goldLancetMat);
-      slit2.position.set(
-        Math.sin(a) * 6.2 + Math.cos(a) * offset,
-        35.0,
-        Math.cos(a) * 6.2 - Math.sin(a) * offset,
-      );
-      slit2.rotation.y = a;
-      spireTowerGroup.add(slit2);
+    for (const off of [-6.0, 6.0]) {
+      const slit = new THREE.Mesh(obsSlitGeo, goldLancetMat);
+      slit.position.set(Math.sin(a) * 20.2 + Math.cos(a) * off, 105.0, Math.cos(a) * 20.2 - Math.sin(a) * off);
+      slit.rotation.y = a;
+      obsGroup.add(slit);
     }
-    const slit3 = new THREE.Mesh(slenderSlitGeo, goldLancetMat);
-    slit3.position.set(Math.sin(a) * 5.65, 60.0, Math.cos(a) * 5.65);
-    slit3.rotation.y = a;
-    spireTowerGroup.add(slit3);
+    const drumSlit = new THREE.Mesh(obsSlitGeo, goldLancetMat);
+    drumSlit.position.set(Math.sin(a) * 16.8, 165.0, Math.cos(a) * 16.8);
+    drumSlit.rotation.y = a;
+    obsGroup.add(drumSlit);
 
-    // Corner spirelet pinnacles at story transitions
-    const cornerA = a + Math.PI / 4;
-    const cornerTurret = new THREE.Mesh(track(new THREE.BoxGeometry(2.2, 44.0, 2.2)), carvedRibMat);
-    cornerTurret.position.set(Math.sin(cornerA) * 8.4, 24.0, Math.cos(cornerA) * 8.4);
-    spireTowerGroup.add(cornerTurret);
+    // Corner spirelets & flying buttress piers on Grand Observatory
+    const ca = a + Math.PI / 4;
+    const cTurret = new THREE.Mesh(track(new THREE.BoxGeometry(6.0, 134.0, 6.0)), carvedRibMat);
+    cTurret.position.set(Math.sin(ca) * 27.0, 68.0, Math.cos(ca) * 27.0);
+    obsGroup.add(cTurret);
+    const cCone = new THREE.Mesh(track(new THREE.ConeGeometry(4.4, 24.0, 4)), slateRoofMat);
+    cCone.position.set(Math.sin(ca) * 27.0, 146.0, Math.cos(ca) * 27.0);
+    cCone.rotation.y = ca + Math.PI / 4;
+    obsGroup.add(cCone);
 
-    const cornerCone = new THREE.Mesh(track(new THREE.ConeGeometry(1.6, 8.5, 4)), slateRoofMat);
-    cornerCone.position.set(Math.sin(cornerA) * 8.4, 50.0, Math.cos(cornerA) * 8.4);
-    cornerCone.rotation.y = cornerA + Math.PI / 4;
-    spireTowerGroup.add(cornerCone);
-
-    const belfryPin = new THREE.Mesh(track(new THREE.ConeGeometry(1.15, 7.5, 4)), carvedRibMat);
-    belfryPin.position.set(Math.sin(cornerA) * 6.2, 79.5, Math.cos(cornerA) * 6.2);
-    belfryPin.rotation.y = cornerA + Math.PI / 4;
-    spireTowerGroup.add(belfryPin);
+    const belfryPin = new THREE.Mesh(track(new THREE.ConeGeometry(3.2, 22.0, 4)), carvedRibMat);
+    belfryPin.position.set(Math.sin(ca) * 18.5, 217.0, Math.cos(ca) * 18.5);
+    belfryPin.rotation.y = ca + Math.PI / 4;
+    obsGroup.add(belfryPin);
   }
+
+  // 3b. Twin Flanking Slender Gothic Bell Towers (local x = ±58, z = -142, soaring to local y = 268m!)
+  for (const side of [-1, 1]) {
+    const bellGroup = new THREE.Group();
+    bellGroup.position.set(side * 58.0, 52.0, -142.0);
+    academyCastleGroup.add(bellGroup);
+
+    const btBase = new THREE.Mesh(track(new THREE.BoxGeometry(26.0, 64.0, 26.0)), limestoneMat);
+    btBase.position.y = 32.0;
+    bellGroup.add(btBase);
+    const btMid = new THREE.Mesh(track(new THREE.BoxGeometry(20.0, 66.0, 20.0)), limestoneMat);
+    btMid.position.y = 97.0;
+    bellGroup.add(btMid);
+    const btOct = new THREE.Mesh(track(new THREE.CylinderGeometry(8.8, 10.2, 48.0, 8)), limestoneMat);
+    btOct.position.y = 154.0;
+    btOct.rotation.y = Math.PI / 8;
+    bellGroup.add(btOct);
+    const btCrown = new THREE.Mesh(track(new THREE.CylinderGeometry(10.8, 9.2, 8.0, 8)), carvedRibMat);
+    btCrown.position.y = 182.0;
+    btCrown.rotation.y = Math.PI / 8;
+    bellGroup.add(btCrown);
+    const btSpire = new THREE.Mesh(track(new THREE.ConeGeometry(10.2, 62.0, 8)), slateRoofMat);
+    btSpire.position.y = 217.0;
+    btSpire.rotation.y = Math.PI / 8;
+    bellGroup.add(btSpire);
+
+    for (let f = 0; f < 4; f++) {
+      const a = (f / 4) * Math.PI * 2;
+      const bSlit = new THREE.Mesh(obsSlitGeo, goldLancetMat);
+      bSlit.position.set(Math.sin(a) * 10.2, 97.0, Math.cos(a) * 10.2);
+      bSlit.rotation.y = a;
+      bellGroup.add(bSlit);
+
+      const ca = a + Math.PI / 4;
+      const bPin = new THREE.Mesh(track(new THREE.ConeGeometry(2.2, 18.0, 4)), slateRoofMat);
+      bPin.position.set(Math.sin(ca) * 13.0, 138.0, Math.cos(ca) * 13.0);
+      bPin.rotation.y = ca + Math.PI / 4;
+      bellGroup.add(bPin);
+    }
+  }
+
+  // 3c. Secondary Rear Citadel Gallery & Spire Cluster (local z = -194)
+  for (const [rx, rw, rh, sh] of [
+    [-38, 28, 118, 52],
+    [38, 28, 118, 52],
+    [-92, 24, 96, 44],
+    [92, 24, 96, 44],
+  ]) {
+    const rBody = new THREE.Mesh(track(new THREE.BoxGeometry(rw, rh, rw)), limestoneMat);
+    rBody.position.set(rx, 46 + rh * 0.5, -192);
+    academyCastleGroup.add(rBody);
+    const rCone = new THREE.Mesh(track(new THREE.ConeGeometry(rw * 0.65, sh, 8)), slateRoofMat);
+    rCone.position.set(rx, 46 + rh + sh * 0.5, -192);
+    academyCastleGroup.add(rCone);
+  }
+
+  // =========================================================================
+  // 4. ATMOSPHERIC SUNKEN LAKE RUINS & JAGGED BASALT SEA STACKS (15°–35° TILT)
+  // =========================================================================
+  const sunkenSpanBay = createGothicBayGeometry(9.0, 15.0, 5.8, 10.5, 2.8);
+  const sunkenSpanB1 = sunkenSpanBay.clone();
+  sunkenSpanB1.translate(-9.0, 0, 0);
+  const sunkenSpanB2 = sunkenSpanBay.clone();
+  const sunkenSpanB3 = sunkenSpanBay.clone();
+  sunkenSpanB3.translate(9.0, 0, 0);
+  const tiltedViaductGeo = track(mergeGeometries([sunkenSpanB1, sunkenSpanB2, sunkenSpanB3])!);
+  sunkenSpanBay.dispose();
+  sunkenSpanB1.dispose();
+  sunkenSpanB2.dispose();
+  sunkenSpanB3.dispose();
+
+  const sunkenViaductSpecs: Array<{ x: number; z: number; ry: number; tiltX: number; tiltZ: number; s: number }> = [
+    { x: -46, z: -654, ry: 0.36, tiltX: 0.28, tiltZ: -0.34, s: 1.25 },
+    { x: 52, z: -662, ry: -0.42, tiltX: -0.26, tiltZ: 0.36, s: 1.3 },
+    { x: -72, z: -712, ry: 0.62, tiltX: 0.34, tiltZ: -0.28, s: 1.45 },
+    { x: 74, z: -720, ry: -0.55, tiltX: -0.32, tiltZ: 0.38, s: 1.48 },
+    { x: -168, z: -745, ry: 0.85, tiltX: 0.42, tiltZ: 0.26, s: 1.65 },
+    { x: 174, z: -762, ry: -0.78, tiltX: -0.36, tiltZ: -0.44, s: 1.6 },
+    { x: -205, z: -865, ry: 0.32, tiltX: 0.48, tiltZ: -0.31, s: 1.8 },
+    { x: 208, z: -875, ry: -0.35, tiltX: 0.38, tiltZ: 0.45, s: 1.75 },
+    { x: -185, z: -1025, ry: 1.1, tiltX: -0.44, tiltZ: 0.32, s: 1.9 },
+    { x: 192, z: -1040, ry: -0.92, tiltX: 0.36, tiltZ: -0.48, s: 1.95 },
+  ];
+  const sunkenViaducts = new THREE.InstancedMesh(tiltedViaductGeo, limestoneMat, sunkenViaductSpecs.length);
+  sunkenViaductSpecs.forEach((sv, idx) => {
+    dummy.position.set(sv.x, ACADEMY.lakeWaterY - 3.0, sv.z);
+    dummy.rotation.set(sv.tiltX, sv.ry, sv.tiltZ);
+    dummy.scale.setScalar(sv.s);
+    dummy.updateMatrix();
+    sunkenViaducts.setMatrixAt(idx, dummy.matrix);
+  });
+  sunkenViaducts.instanceMatrix.needsUpdate = true;
+  sunkenViaducts.computeBoundingSphere();
+  interiorGroup.add(sunkenViaducts);
+
+  const ruinTowerShaftGeo = track(new THREE.CylinderGeometry(3.2, 4.1, 30.0, 8));
+  ruinTowerShaftGeo.translate(0, 15.0, 0);
+  const ruinTowerRoofGeo = track(new THREE.ConeGeometry(4.2, 18.0, 8));
+  ruinTowerRoofGeo.translate(0, 38.0, 0);
+  const sunkenSpireSpecs: Array<{ x: number; z: number; ry: number; tiltX: number; tiltZ: number; s: number }> = [
+    { x: -96, z: -656, ry: 0.3, tiltX: 0.26, tiltZ: 0.24, s: 1.15 },
+    { x: 102, z: -662, ry: -0.5, tiltX: -0.28, tiltZ: -0.24, s: 1.2 },
+    { x: -166, z: -826, ry: 0.4, tiltX: 0.3, tiltZ: 0.26, s: 1.35 },
+    { x: 172, z: -838, ry: -0.7, tiltX: -0.36, tiltZ: -0.24, s: 1.45 },
+    { x: -238, z: -925, ry: 1.2, tiltX: 0.38, tiltZ: -0.3, s: 1.65 },
+    { x: 242, z: -945, ry: -1.1, tiltX: -0.32, tiltZ: 0.4, s: 1.6 },
+    { x: -145, z: -1120, ry: 0.9, tiltX: 0.38, tiltZ: -0.32, s: 1.85 },
+    { x: 152, z: -1135, ry: -0.8, tiltX: -0.4, tiltZ: 0.32, s: 1.9 },
+  ];
+  const sunkenTowerShafts = new THREE.InstancedMesh(ruinTowerShaftGeo, limestoneMat, sunkenSpireSpecs.length);
+  const sunkenTowerRoofs = new THREE.InstancedMesh(ruinTowerRoofGeo, slateRoofMat, sunkenSpireSpecs.length);
+  sunkenSpireSpecs.forEach((st, idx) => {
+    dummy.position.set(st.x, ACADEMY.lakeWaterY - 3.5, st.z);
+    dummy.rotation.set(st.tiltX, st.ry, st.tiltZ);
+    dummy.scale.setScalar(st.s);
+    dummy.updateMatrix();
+    sunkenTowerShafts.setMatrixAt(idx, dummy.matrix);
+    sunkenTowerRoofs.setMatrixAt(idx, dummy.matrix);
+  });
+  sunkenTowerShafts.instanceMatrix.needsUpdate = true;
+  sunkenTowerRoofs.instanceMatrix.needsUpdate = true;
+  sunkenTowerShafts.computeBoundingSphere();
+  sunkenTowerRoofs.computeBoundingSphere();
+  interiorGroup.add(sunkenTowerShafts, sunkenTowerRoofs);
+
+  // Jagged Flat-Shaded Basalt Sea Stacks emerging across outer lake perimeter (InstancedMesh)
+  const seaStackGeo = track(new THREE.DodecahedronGeometry(6.5, 0));
+  seaStackGeo.scale(1.0, 2.6, 1.0);
+  const seaStackMat = track(
+    new THREE.MeshStandardMaterial({
+      color: 0x2a3038,
+      roughness: 0.94,
+      metalness: 0.05,
+      flatShading: true,
+    }),
+  );
+  const seaStackSpecs: Array<[number, number, number, number]> = [
+    [-88, -642, 1.2, 0.35],
+    [94, -648, 1.35, -0.4],
+    [-195, -695, 2.2, 0.3],
+    [198, -708, 2.4, -0.35],
+    [-255, -830, 2.8, 0.42],
+    [258, -845, 2.7, -0.38],
+    [-245, -1060, 3.2, 0.28],
+    [248, -1080, 3.1, -0.32],
+  ];
+  const seaStacksInst = new THREE.InstancedMesh(seaStackGeo, seaStackMat, seaStackSpecs.length);
+  seaStackSpecs.forEach(([sx, sz, ss, tilt], idx) => {
+    dummy.position.set(sx, ACADEMY.lakeWaterY - 2.0, sz);
+    dummy.rotation.set(tilt, idx * 0.9, -tilt * 0.6);
+    dummy.scale.setScalar(ss);
+    dummy.updateMatrix();
+    seaStacksInst.setMatrixAt(idx, dummy.matrix);
+  });
+  seaStacksInst.instanceMatrix.needsUpdate = true;
+  seaStacksInst.computeBoundingSphere();
+  interiorGroup.add(seaStacksInst);
 
   return {
     academyCastleGroup,

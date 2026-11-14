@@ -390,8 +390,9 @@ export function buildCitadelInterior({
       bumpMap: textures.mossyStone.bumpMap,
       bumpScale: 0.08,
       roughnessMap: textures.mossyStone.roughnessMap,
-      roughness: 0.76,
-      metalness: 0.05,
+      roughness: 0.38,
+      metalness: 0.08,
+      envMapIntensity: 0.72,
     }),
   );
 
@@ -457,8 +458,8 @@ export function buildCitadelInterior({
     new THREE.MeshStandardMaterial({
       color: 0x3ac9f0,
       emissive: new THREE.Color(0x28b7eb),
-      emissiveIntensity: 1.55,
-      roughness: 0.35,
+      emissiveIntensity: 1.85,
+      roughness: 0.3,
       metalness: 0.05,
     }),
   );

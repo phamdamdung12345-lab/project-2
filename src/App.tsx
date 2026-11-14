@@ -27,7 +27,10 @@ export default function App() {
   const [gateOpened, setGateOpened] = useState(false);
   const [isResting, setIsResting] = useState(false);
   const [freeCam, setFreeCam] = useState(false);
+  const [pointerLocked, setPointerLocked] = useState(false);
   const [hudHidden, setHudHidden] = useState(false);
+  const [bloomEnabled, setBloomEnabled] = useState(true);
+  const [audioMuted, setAudioMuted] = useState(false);
   const [isDead, setIsDead] = useState(false);
   const [checkpointNotice, setCheckpointNotice] = useState<string | null>(null);
 
@@ -72,7 +75,10 @@ export default function App() {
     document.body.dataset.zone = currentZone;
     document.body.dataset.resting = isResting ? 'true' : 'false';
     document.body.dataset.freecam = freeCam ? 'true' : 'false';
+    document.body.dataset.pointerlocked = pointerLocked ? 'true' : 'false';
     document.body.dataset.hud = hudHidden ? 'hidden' : 'visible';
+    document.body.dataset.bloom = bloomEnabled ? 'on' : 'off';
+    document.body.dataset.audio = audioMuted ? 'muted' : 'on';
     document.body.dataset.dead = isDead ? 'true' : 'false';
     document.body.dataset.neargate = nearGate ? 'true' : 'false';
     document.body.dataset.nearportal = nearAstralPortal ? 'true' : 'false';
@@ -84,7 +90,10 @@ export default function App() {
     currentZone,
     isResting,
     freeCam,
+    pointerLocked,
     hudHidden,
+    bloomEnabled,
+    audioMuted,
     isDead,
     nearGate,
     nearAstralPortal,
@@ -123,6 +132,9 @@ export default function App() {
           setGateOpened(state.gateOpened);
           setIsResting(state.isResting);
           setFreeCam(state.freeCam);
+          setPointerLocked(state.pointerLocked);
+          setBloomEnabled(state.bloomEnabled);
+          setAudioMuted(state.audioMuted);
           setCurrentZone(state.zone);
         },
       },
@@ -171,8 +183,29 @@ export default function App() {
     }
   }, []);
 
+  const handleTogglePointerLock = useCallback(() => {
+    engineRef.current?.togglePointerLock();
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, []);
+
   const handleToggleHud = useCallback(() => {
     setHudHidden((prev) => !prev);
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, []);
+
+  const handleToggleBloom = useCallback(() => {
+    engineRef.current?.toggleBloom();
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, []);
+
+  const handleToggleAudioMute = useCallback(() => {
+    engineRef.current?.toggleAudioMute();
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -195,13 +228,19 @@ export default function App() {
         gateOpened={gateOpened}
         isResting={isResting}
         freeCam={freeCam}
+        pointerLocked={pointerLocked}
         hudHidden={hudHidden}
+        bloomEnabled={bloomEnabled}
+        audioMuted={audioMuted}
         isDead={isDead}
         checkpointNotice={checkpointNotice}
         currentZone={currentZone}
         onStart={handleStart}
         onToggleHud={handleToggleHud}
         onToggleFreeCam={handleToggleFreeCam}
+        onTogglePointerLock={handleTogglePointerLock}
+        onToggleBloom={handleToggleBloom}
+        onToggleAudioMute={handleToggleAudioMute}
       />
     </main>
   );

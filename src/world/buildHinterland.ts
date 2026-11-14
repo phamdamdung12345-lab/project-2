@@ -150,11 +150,11 @@ export function buildHinterland({
   // =========================================================================
   // 1. UNDULATING CONTINUOUS FOREST, RIVERBED, HAMLET, SNOW PASS & LAKEBED TERRAIN
   // =========================================================================
-  const terrainW = 460; // x: -305 .. +155 (center -75)
-  const terrainD = 365; // z: -291.5 .. -656.5 (center -474)
-  const terrainCx = -75;
-  const terrainCz = -474.0;
-  const terrainGeo = track(new THREE.PlaneGeometry(terrainW, terrainD, 144, 118));
+  const terrainW = 840; // x: -460 .. +380 (center -40)
+  const terrainD = 400; // z: -245 .. -645 (center -445)
+  const terrainCx = -40;
+  const terrainCz = -445.0;
+  const terrainGeo = track(new THREE.PlaneGeometry(terrainW, terrainD, 168, 128));
   terrainGeo.rotateX(-Math.PI / 2);
 
   const posAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
@@ -172,33 +172,48 @@ export function buildHinterland({
     const wz = posAttr.getZ(i) + terrainCz;
     let wy = getHinterlandGroundY(wx, wz);
 
-    // Carve Moonlit Riverbed smoothly below riverWaterY (-14.15 -> -15.65)
+    // Gentle rolling dry highland hills outside the playable forest & trails (zero flat square dropoff!)
+    const eastHill = smoothstep(82.0, 260.0, wx);
+    const westHill = smoothstep(-246.0, -390.0, wx);
+    const southHill = smoothstep(-292.0, -250.0, wz) * smoothstep(14.0, 48.0, Math.abs(wx));
+    const outerHillWave =
+      Math.sin(wx * 0.032 + wz * 0.028) * 2.4 + Math.cos(wx * 0.018 - wz * 0.041) * 1.8;
+    wy += eastHill * (10.5 + outerHillWave) + westHill * (13.0 + outerHillWave) + southHill * 8.0;
+
+    // Carve Moonlit Riverbed smoothly below riverWaterY (-14.15 -> -15.65) strictly within x ∈ [-232, +152]
     const rz = getRiverCenterZ(wx);
     const dr = Math.abs(wz - rz);
-    if (wx >= -245 && wx <= 155 && dr < 13.5) {
-      const bankBlend = 1 - smoothstep(7.2, 13.5, dr);
+    const riverEndFade =
+      smoothstep(-236.0, -218.0, wx) * (1 - smoothstep(138.0, 154.0, wx));
+    if (wx >= -236 && wx <= 156 && dr < 13.5 && riverEndFade > 0.001) {
+      const bankBlend = (1 - smoothstep(7.2, 13.5, dr)) * riverEndFade;
       const bedY = HINTERLAND.riverWaterY - 1.55;
       wy = wy * (1 - bankBlend) + bedY * bankBlend;
     }
 
-    // Submerge far-bank lakebed north of the Academy perimeter wall (z < -584, except west Hamlet cliffs)
+    // Submerge far-bank lakebed strictly inside the Academy lake basin north of retaining wall (z < -584, x ∈ [-194, +166])
     let lakeSubmerge = 0;
-    if (wz < -584.0 && wx > -198.0) {
+    if (wz < -584.0 && wx > -194.0 && wx < 166.0) {
       const lakeFade = smoothstep(-584.0, -592.0, wz);
-      const cliffRiseWest = smoothstep(-175.0, -198.0, wx);
-      lakeSubmerge = lakeFade * (1 - cliffRiseWest);
+      const cliffRiseWest = smoothstep(-172.0, -194.0, wx);
+      const cliffRiseEast = smoothstep(148.0, 166.0, wx);
+      lakeSubmerge = lakeFade * (1 - cliffRiseWest) * (1 - cliffRiseEast);
       const lakeBedY = ACADEMY.lakeWaterY - 2.4;
       wy = wy * (1 - lakeSubmerge) + lakeBedY * lakeSubmerge;
     }
 
-    // Rise mountain foothills smoothly behind western perimeter wall & north of Ashenbrook Hamlet
+    // Rise mountain foothills smoothly behind western & eastern perimeter wall flanks (keeping dry land well above water!)
     if (wx < -180.0 && wz < -568.0) {
       const slopeT = smoothstep(-180.0, -245.0, wx) * smoothstep(-566.0, -612.0, wz);
       wy += slopeT * 14.5;
     }
+    if (wx > 152.0 && wz < -568.0) {
+      const slopeE = smoothstep(152.0, 218.0, wx) * smoothstep(-566.0, -612.0, wz);
+      wy += slopeE * 13.5;
+    }
 
     posAttr.setY(i, wy - 0.04);
-    uvAttr.setXY(i, (wx + 305) * 0.08, (-wz - 290) * 0.08);
+    uvAttr.setXY(i, (wx + 460) * 0.08, (-wz - 245) * 0.08);
 
     // Terrain Biome Color Blending
     col.copy(cForest);
@@ -206,8 +221,8 @@ export function buildHinterland({
       const trailD = Math.abs(wx - getWhisperingTrailX(wz));
       col.lerp(cTrail, 1 - smoothstep(2.5, 8.0, trailD));
     }
-    if (dr < 15.5 && wx >= -235 && wx <= 155) {
-      col.lerp(cRiverBank, 1 - smoothstep(7.0, 15.5, dr));
+    if (dr < 15.5 && wx >= -232 && wx <= 152) {
+      col.lerp(cRiverBank, (1 - smoothstep(7.0, 15.5, dr)) * riverEndFade);
     }
     if (lakeSubmerge > 0) {
       col.lerp(cRiverBank, lakeSubmerge);
@@ -572,22 +587,23 @@ export function buildHinterland({
       )
       .replace(
         '#include <dithering_fragment>',
-        `float rWave = sin(vRiverPos.x * 0.55 - uTime * 1.6 + vRiverPos.z * 0.25) * 0.5 + 0.5;
-         float rWave2 = cos(vRiverPos.x * 0.22 + vRiverPos.z * 0.85 + uTime * 1.1) * 0.5 + 0.5;
-         float glint = smoothstep(0.72, 0.98, rWave * rWave2);
-         gl_FragColor.rgb += vec3(0.18, 0.32, 0.38) * glint * 0.55;
+        `float rFlow1 = sin(vRiverPos.x * 0.19 - uTime * 1.35 + sin(vRiverPos.z * 0.42) * 1.4);
+         float rFlow2 = cos(vRiverPos.x * 0.37 - uTime * 0.95 - vRiverPos.z * 0.68);
+         float rWave = (rFlow1 * 0.55 + rFlow2 * 0.45) * 0.5 + 0.5;
+         float glint = pow(clamp(rWave, 0.0, 1.0), 4.0) * 0.34;
+         gl_FragColor.rgb += vec3(0.20, 0.36, 0.44) * glint;
          #include <dithering_fragment>`,
       );
   };
 
-  // Build curved river ribbon following getRiverCenterZ(x) across x ∈ [-245, +155]
+  // Build curved river ribbon following getRiverCenterZ(x) strictly inside x ∈ [-232, +152]
   const riverSegsX = 96;
-  const riverHalfW = 11.8;
+  const riverHalfW = 11.2;
   const riverPositions: number[] = [];
   const riverNormals: number[] = [];
   const riverIndices: number[] = [];
   for (let i = 0; i <= riverSegsX; i++) {
-    const rx = THREE.MathUtils.lerp(-245, 155, i / riverSegsX);
+    const rx = THREE.MathUtils.lerp(-232, 152, i / riverSegsX);
     const rz = getRiverCenterZ(rx);
     riverPositions.push(rx, HINTERLAND.riverWaterY, rz - riverHalfW);
     riverPositions.push(rx, HINTERLAND.riverWaterY, rz + riverHalfW);
@@ -684,8 +700,8 @@ export function buildHinterland({
     new THREE.MeshStandardMaterial({
       color: 0xffcf7d,
       emissive: new THREE.Color(0xff942e),
-      emissiveIntensity: 2.2,
-      roughness: 0.3,
+      emissiveIntensity: 2.35,
+      roughness: 0.25,
     }),
   );
 
@@ -837,7 +853,7 @@ export function buildHinterland({
   outerPlaza.receiveShadow = true;
   interiorGroup.add(outerPlaza);
 
-  buildStairFlight(-6.5, 6.5, ACADEMY.gateStepsEndZ, ACADEMY.gateStepsStartZ, hY, ACADEMY.causewayY, 10, flagstoneMat);
+  buildStairFlight(-7.0, 7.0, ACADEMY.gateStepsEndZ, ACADEMY.gateStepsStartZ, hY, ACADEMY.causewayY, 10, flagstoneMat);
 
   // =========================================================================
   // 5B & 5C. FLOODED LAKESIDE CAMPUS, SUNKEN RUINS & ACADEMY CITADEL EXTERIOR
@@ -1344,15 +1360,33 @@ export function buildHinterland({
     return false;
   };
 
-  // Forest Evergreens filling Whispering Woods AND far riverbank foothills (x ∈ [-225, +145], z ∈ [-288, -582])
+  const dryGroundYAt = (rx: number, rz: number): number => {
+    let wy = getHinterlandGroundY(rx, rz);
+    const eastHill = smoothstep(82.0, 260.0, rx);
+    const westHill = smoothstep(-246.0, -390.0, rx);
+    const outerHillWave =
+      Math.sin(rx * 0.032 + rz * 0.028) * 2.4 + Math.cos(rx * 0.018 - rz * 0.041) * 1.8;
+    wy += eastHill * (10.5 + outerHillWave) + westHill * (13.0 + outerHillWave);
+    if (rx < -180.0 && rz < -568.0) {
+      wy += smoothstep(-180.0, -245.0, rx) * smoothstep(-566.0, -612.0, rz) * 14.5;
+    }
+    if (rx > 152.0 && rz < -568.0) {
+      wy += smoothstep(152.0, 218.0, rx) * smoothstep(-566.0, -612.0, rz) * 13.5;
+    }
+    return wy;
+  };
+
+  // Forest Evergreens filling Whispering Woods AND dry eastern/western highland foothills (x ∈ [-235, +245], z ∈ [-284, -582])
   const treeCoords: Array<{ x: number; y: number; z: number; s: number; rot: number }> = [];
-  for (let i = 0; i < 1600 && treeCoords.length < 340; i++) {
-    const rx = -225 + hRand() * 370;
-    const rz = -288 - hRand() * 294;
+  for (let i = 0; i < 2000 && treeCoords.length < 430; i++) {
+    const rx = -235 + hRand() * 480;
+    const rz = -284 - hRand() * 298;
     if (isInsidePlayableForest(rx, rz, 2.6)) continue;
+    const gy = dryGroundYAt(rx, rz);
+    if (gy < ACADEMY.lakeWaterY + 1.0) continue;
     treeCoords.push({
       x: rx,
-      y: getHinterlandGroundY(rx, rz) - 0.15,
+      y: gy - 0.15,
       z: rz,
       s: 0.9 + hRand() * 0.95,
       rot: hRand() * Math.PI * 2,
@@ -1387,13 +1421,15 @@ export function buildHinterland({
     }),
   );
   const frostTreeCoords: Array<{ x: number; y: number; z: number; s: number; rot: number }> = [];
-  for (let i = 0; i < 650 && frostTreeCoords.length < 120; i++) {
-    const rx = -280 + hRand() * 115;
-    const rz = -505 - hRand() * 115;
+  for (let i = 0; i < 800 && frostTreeCoords.length < 155; i++) {
+    const rx = -315 + hRand() * 145;
+    const rz = -500 - hRand() * 125;
     if (isInsidePlayableForest(rx, rz, 2.4)) continue;
+    const gy = dryGroundYAt(rx, rz);
+    if (gy < ACADEMY.lakeWaterY + 1.0) continue;
     frostTreeCoords.push({
       x: rx,
-      y: getHinterlandGroundY(rx, rz) - 0.15,
+      y: gy - 0.15,
       z: rz,
       s: 0.95 + hRand() * 0.85,
       rot: hRand() * Math.PI * 2,

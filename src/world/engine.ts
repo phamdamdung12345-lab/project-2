@@ -1,9 +1,18 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { createWorldTextures } from './textures';
 import { buildFantasyWorld } from './buildWorld';
 import { buildAstralCapital } from './buildAstralCapital';
 import { createKnight, animateKnight } from './knight';
+import {
+  BIOME_ATMOSPHERES,
+  selectBiomeAtmosphere,
+  wrapParticleAxis,
+} from './atmosphereAndAudio';
+import { createFantasyAudioEngine } from './audio';
 import {
   WORLD,
   TOWER,
@@ -24,7 +33,6 @@ import {
   getRiversideTrailZ,
   getSnowPassCenterZ,
   getHinterlandGroundY,
-  computeAcademyScale,
 } from './terrainMath';
 import {
   ASTRAL,
@@ -55,6 +63,10 @@ export interface EngineCallbacks {
     gateOpened: boolean;
     isResting: boolean;
     freeCam: boolean;
+    pointerLocked: boolean;
+    bloomEnabled: boolean;
+    audioMuted: boolean;
+    audioInitialized: boolean;
     zone: ZoneId;
   }) => void;
 }
@@ -62,6 +74,9 @@ export interface EngineCallbacks {
 export interface EngineController {
   setPlaying: (playing: boolean) => void;
   toggleFreeCam: () => void;
+  togglePointerLock: () => void;
+  toggleBloom: () => void;
+  toggleAudioMute: () => void;
   dispose: () => void;
 }
 
@@ -78,13 +93,12 @@ const _camRayOrigin = new THREE.Vector3();
 const _camRayDir = new THREE.Vector3();
 const _rayHits: THREE.Intersection[] = [];
 const _twilightFogCol = new THREE.Color(0x7c674f);
-const _cloisterFogCol = new THREE.Color(0x3a3735);
-const _hinterlandFogCol = new THREE.Color(0x3d5966);
-const _lakeFogCol = new THREE.Color(0x1f4354);
-const _hamletFogCol = new THREE.Color(0x49626b);
-const _snowPassFogCol = new THREE.Color(0x718691);
-const _astralFogCol = new THREE.Color(0x1b1a36);
-const _targetFogCol = new THREE.Color(0x7c674f);
+const _targetFogCol = new THREE.Color(0x6d5a45);
+const _targetHemiSkyCol = new THREE.Color(0x7e97bd);
+const _targetHemiGroundCol = new THREE.Color(0x382a1f);
+const _targetSunCol = new THREE.Color(0xffc175);
+const _targetRimCol = new THREE.Color(0x9fb5d9);
+const _targetParticleCol = new THREE.Color(0xffd788);
 
 function detectSoftwareWebGL(): boolean {
   const canvas = document.createElement('canvas');
@@ -97,12 +111,95 @@ function detectSoftwareWebGL(): boolean {
   return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
 }
 
+function createTwilightStarlightEnvTexture(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const envScene = new THREE.Scene();
+  const skyGeo = new THREE.SphereGeometry(40, 24, 16);
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vDir;
+      void main() {
+        float up = clamp(vDir.y, -1.0, 1.0);
+        vec3 nadir = vec3(0.035, 0.045, 0.095);
+        vec3 horizon = vec3(0.32, 0.48, 0.72);
+        vec3 zenith = vec3(0.055, 0.075, 0.22);
+        vec3 col = mix(nadir, horizon, smoothstep(-0.35, 0.05, up));
+        col = mix(col, zenith, smoothstep(0.05, 0.75, up));
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+  });
+  const envSky = new THREE.Mesh(skyGeo, skyMat);
+  envScene.add(envSky);
+
+  const rimGeo = new THREE.CircleGeometry(10, 24);
+  const goldRimMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(2.4, 1.65, 0.72),
+    side: THREE.DoubleSide,
+  });
+  const goldRimCard = new THREE.Mesh(rimGeo, goldRimMat);
+  goldRimCard.position.set(18, 12, -22);
+  goldRimCard.lookAt(0, 0, 0);
+  envScene.add(goldRimCard);
+
+  const moonMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1.25, 1.55, 2.25),
+    side: THREE.DoubleSide,
+  });
+  const moonCard = new THREE.Mesh(rimGeo, moonMat);
+  moonCard.position.set(-20, 18, 16);
+  moonCard.lookAt(0, 0, 0);
+  envScene.add(moonCard);
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const envTex = pmrem.fromScene(envScene, 0.04).texture;
+
+  skyGeo.dispose();
+  skyMat.dispose();
+  rimGeo.dispose();
+  goldRimMat.dispose();
+  moonMat.dispose();
+  pmrem.dispose();
+  return envTex;
+}
+
+function createSoftMoteTexture(): THREE.CanvasTexture {
+  const size = 64;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext('2d');
+  if (ctx) {
+    const grad = ctx.createRadialGradient(32, 32, 1, 32, 32, 30);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+    grad.addColorStop(0.32, 'rgba(255, 255, 255, 0.65)');
+    grad.addColorStop(0.7, 'rgba(255, 255, 255, 0.14)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function mountFantasyEngine(
   container: HTMLElement,
   callbacks: EngineCallbacks,
   initialPlaying: boolean,
 ): EngineController {
   const isSoftwareGl = detectSoftwareWebGL();
+  const initW = container.clientWidth || window.innerWidth;
+  const initH = container.clientHeight || window.innerHeight;
 
   const renderer = new THREE.WebGLRenderer({
     antialias: !isSoftwareGl,
@@ -110,9 +207,9 @@ export function mountFantasyEngine(
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.08;
+  renderer.toneMappingExposure = 1.12;
   renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight);
+  renderer.setSize(initW, initH);
   renderer.shadowMap.enabled = !isSoftwareGl;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.display = 'block';
@@ -122,57 +219,108 @@ export function mountFantasyEngine(
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x7c674f);
-  scene.fog = new THREE.FogExp2(0x7c674f, 0.0042);
+  scene.background = new THREE.Color(BIOME_ATMOSPHERES.twilight.fogHex);
+  scene.fog = new THREE.FogExp2(BIOME_ATMOSPHERES.twilight.fogHex, BIOME_ATMOSPHERES.twilight.fogDensity);
 
-  // Studio environment reflections for armor & gilded citadel roofs
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  // Custom procedural twilight & starlight PMREM environment cubemap
+  const envTex = createTwilightStarlightEnvTexture(renderer);
   scene.environment = envTex;
-  pmrem.dispose();
+  scene.environmentIntensity = 0.72;
 
-  const camera = new THREE.PerspectiveCamera(
-    56,
-    (container.clientWidth || window.innerWidth) / (container.clientHeight || window.innerHeight),
-    0.2,
-    1700,
+  const camera = new THREE.PerspectiveCamera(56, initW / initH, 0.2, 2600);
+
+  // Post-processing: Selective Unreal Bloom + OutputPass (bypassed on SwiftShader software GL)
+  let bloomEnabled = true;
+  const composerTarget = new THREE.WebGLRenderTarget(initW, initH, {
+    type: THREE.HalfFloatType,
+  });
+  const composer = new EffectComposer(renderer, composerTarget);
+  const renderPass = new RenderPass(scene, camera);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(initW, initH), 0.34, 0.48, 0.84);
+  const outputPass = new OutputPass();
+  composer.addPass(renderPass);
+  composer.addPass(bloomPass);
+  composer.addPass(outputPass);
+
+  // Lighting: Cool-cerulean HemisphereLight, primary DirectionalLight (intensity 1.85), & warm RimLight
+  const hemiLight = new THREE.HemisphereLight(
+    BIOME_ATMOSPHERES.twilight.hemiSkyHex,
+    BIOME_ATMOSPHERES.twilight.hemiGroundHex,
+    BIOME_ATMOSPHERES.twilight.hemiIntensity,
   );
-
-  // Lighting: Warm low-angle golden twilight sun + Cool slate-blue hemisphere fill
-  const hemiLight = new THREE.HemisphereLight(0x7e97bd, 0x3b2d22, 1.05);
   scene.add(hemiLight);
 
-  const sunLight = new THREE.DirectionalLight(0xffb969, 2.55);
-  sunLight.position.set(85, 58, -140);
+  const sunLight = new THREE.DirectionalLight(
+    BIOME_ATMOSPHERES.twilight.sunHex,
+    BIOME_ATMOSPHERES.twilight.sunIntensity,
+  );
+  sunLight.position.set(42, 46, -38);
   sunLight.castShadow = !isSoftwareGl;
   sunLight.shadow.mapSize.width = 1024;
   sunLight.shadow.mapSize.height = 1024;
-  sunLight.shadow.camera.near = 10;
-  sunLight.shadow.camera.far = 380;
-  sunLight.shadow.camera.left = -95;
-  sunLight.shadow.camera.right = 95;
-  sunLight.shadow.camera.top = 95;
-  sunLight.shadow.camera.bottom = -95;
+  sunLight.shadow.camera.near = 4;
+  sunLight.shadow.camera.far = 160;
+  sunLight.shadow.camera.left = -17;
+  sunLight.shadow.camera.right = 17;
+  sunLight.shadow.camera.top = 17;
+  sunLight.shadow.camera.bottom = -17;
+  sunLight.shadow.camera.updateProjectionMatrix();
   sunLight.shadow.bias = -0.0005;
   sunLight.shadow.normalBias = 0.025;
   scene.add(sunLight);
   scene.add(sunLight.target);
 
-  const rimLight = new THREE.DirectionalLight(0x9fb5d9, 0.65);
-  rimLight.position.set(-60, 40, 80);
+  const rimLight = new THREE.DirectionalLight(
+    BIOME_ATMOSPHERES.twilight.rimHex,
+    BIOME_ATMOSPHERES.twilight.rimIntensity,
+  );
+  rimLight.position.set(-48, 32, 54);
   scene.add(rimLight);
 
-  // Build Textures, Overworld, Astral Royal Capital, and Knight
+  // Build Textures, Overworld, Astral Royal Capital, Knight, and Audio Engine
   const textures = createWorldTextures(renderer);
   const world = buildFantasyWorld(scene, textures);
   const astralCapital = buildAstralCapital(scene, textures, renderer);
   const knight = createKnight();
   scene.add(knight.root);
+  const audioEngine = createFantasyAudioEngine();
+
+  // Single-Draw-Call Batched Atmospheric Motes (750 particles in 45m radius around player)
+  const PARTICLE_COUNT = 750;
+  const PARTICLE_RADIUS = 45;
+  const moteTex = createSoftMoteTexture();
+  const motePositions = new Float32Array(PARTICLE_COUNT * 3);
+  const moteSeeds = new Float32Array(PARTICLE_COUNT);
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    motePositions[i * 3] = (Math.random() - 0.5) * PARTICLE_RADIUS * 2;
+    motePositions[i * 3 + 1] = -6 + Math.random() * 32;
+    motePositions[i * 3 + 2] = (Math.random() - 0.5) * PARTICLE_RADIUS * 2;
+    moteSeeds[i] = Math.random() * Math.PI * 2;
+  }
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute('position', new THREE.BufferAttribute(motePositions, 3));
+  const moteMat = new THREE.PointsMaterial({
+    size: 0.42,
+    map: moteTex,
+    color: BIOME_ATMOSPHERES.twilight.particleHex,
+    transparent: true,
+    opacity: 0.72,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  const motePoints = new THREE.Points(moteGeo, moteMat);
+  motePoints.frustumCulled = false;
+  scene.add(motePoints);
+
+  const urlSpawn =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('spawn') : null;
 
   // Player & Camera State
   let activeRealm: RealmId = 'overworld';
   let isPlaying = initialPlaying;
-  let freeCam = false;
+  let freeCam = urlSpawn === 'aerial';
+  let isPointerLocked = false;
   let isResting = false;
   let restBlend = 0;
   let isDead = false;
@@ -191,9 +339,6 @@ export function mountFantasyEngine(
 
   let activeCheckpoint: BonfireSite = BONFIRES[0];
   let activeAstralCheckpoint: BonfireSite = ASTRAL_GRACE_SITES[0];
-
-  const urlSpawn =
-    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('spawn') : null;
   let posX: number = WORLD.spawnPos.x;
   let posZ: number = WORLD.spawnPos.z;
   let posY: number = sampleFloorHeight(posX, WORLD.spawnPos.y + 0.5, posZ) ?? 0;
@@ -217,90 +362,62 @@ export function mountFantasyEngine(
     posZ = TOWER.cz;
     posY = TOWER.tier2Y;
     knightYaw = Math.PI / 2;
-    scene.background = _cloisterFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_cloisterFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0085;
   } else if (urlSpawn === 'hinterland') {
     posX = 0;
     posZ = -278.0;
     posY = TOWER.tier3Y;
-    scene.background = _hinterlandFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_hinterlandFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0135;
   } else if (urlSpawn === 'clearing') {
     posX = -2.8;
     posZ = HINTERLAND.clearingCz + 5.2;
     posY = WORLD.hinterlandY;
-    scene.background = _hinterlandFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_hinterlandFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0135;
   } else if (urlSpawn === 'alcove') {
     posX = 24.0;
     posZ = -475.0;
     posY = WORLD.hinterlandY;
     knightYaw = -1.12;
-    scene.background = _hinterlandFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_hinterlandFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0135;
   } else if (urlSpawn === 'river') {
     posX = 0;
     posZ = -544.0;
     posY = WORLD.hinterlandY;
-    scene.background = _hinterlandFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_hinterlandFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0056;
   } else if (urlSpawn === 'lakegate') {
     posX = 0;
     posZ = -583.5;
     posY = WORLD.hinterlandY;
-    scene.background = _lakeFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_lakeFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0038;
   } else if (urlSpawn === 'lakebonfire') {
     posX = ACADEMY.bonfireX - 3.2;
     posZ = ACADEMY.bonfireZ + 3.0;
     posY = ACADEMY.causewayY + 0.15;
-    scene.background = _lakeFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_lakeFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0038;
   } else if (urlSpawn === 'academy') {
     posX = 0;
     posZ = -805.0;
     posY = ACADEMY.castleBaseY;
-    scene.background = _lakeFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_lakeFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0038;
   } else if (urlSpawn === 'forecourt') {
     posX = 0;
     posZ = -872.0;
     posY = ACADEMY.forecourtY;
-    scene.background = _lakeFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_lakeFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0038;
+  } else if (urlSpawn === 'westcloister') {
+    posX = -114.0;
+    posZ = -772.0;
+    posY = ACADEMY.westCloisterY;
+  } else if (urlSpawn === 'eastharbor') {
+    posX = 114.0;
+    posZ = -772.0;
+    posY = ACADEMY.eastBastionY;
   } else if (urlSpawn === 'trail') {
     posX = -80.0;
     posZ = getRiversideTrailZ(-80.0);
     posY = getHinterlandGroundY(posX, posZ);
     knightYaw = Math.PI / 2;
-    scene.background = _hamletFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_hamletFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.014;
   } else if (urlSpawn === 'hamlet') {
     posX = -166.0;
     posZ = -548.0;
     posY = HAMLET.hamletY;
     knightYaw = Math.PI / 2;
-    scene.background = _hamletFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_hamletFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0145;
   } else if (urlSpawn === 'snowpass') {
     posX = -218.0;
     posZ = getSnowPassCenterZ(-218.0);
     posY = getHinterlandGroundY(posX, posZ);
     knightYaw = Math.PI / 2;
-    scene.background = _snowPassFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_snowPassFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0165;
   } else if (urlSpawn === 'tunneldoor') {
     gateOpened = true;
     world.catacombGate.leftDoorPivot.rotation.y = 1.32;
@@ -310,61 +427,121 @@ export function mountFantasyEngine(
     posY = -26.0;
     posZ = -133.5;
     knightYaw = 0;
-    scene.background = _cloisterFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_cloisterFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.0085;
+  } else if (urlSpawn === 'aerial') {
+    posX = 0.0;
+    posZ = -544.0;
+    posY = getHinterlandGroundY(posX, posZ);
+    knightYaw = 0;
   } else if (
     urlSpawn === 'astral' ||
+    urlSpawn === 'astral-rear' ||
+    urlSpawn === 'astral-west' ||
+    urlSpawn === 'astral-east' ||
     urlSpawn === 'astral-sprawl' ||
     urlSpawn === 'astral-dragon' ||
-    urlSpawn === 'astral-aqueduct'
+    urlSpawn === 'astral-bridge' ||
+    urlSpawn === 'astral-fortress' ||
+    urlSpawn === 'astral-aqueduct' ||
+    urlSpawn === 'astral-shrine' ||
+    urlSpawn === 'astral-abbey'
   ) {
     activeRealm = 'astral';
     world.overworldGroup.visible = false;
     astralCapital.group.visible = true;
-    camera.far = 3500;
+    camera.far = 5600;
     camera.updateProjectionMatrix();
-    scene.background = _astralFogCol.clone();
-    (scene.fog as THREE.FogExp2).color.copy(_astralFogCol);
-    (scene.fog as THREE.FogExp2).density = 0.00115;
-    hemiLight.color.setHex(0x8ea4e8);
-    hemiLight.groundColor.setHex(0x4e3c2c);
-    hemiLight.intensity = 1.3;
-    sunLight.color.setHex(0xffce84);
-    sunLight.intensity = 2.35;
-    rimLight.color.setHex(0x6f8cff);
-    rimLight.intensity = 1.15;
 
-    if (urlSpawn === 'astral-sprawl') {
+    if (urlSpawn === 'astral-rear') {
       posX = 0;
-      posY = ASTRAL.sprawlPlazaY;
-      posZ = -142;
-    } else if (urlSpawn === 'astral-dragon') {
-      posX = 92;
-      posY = ASTRAL.dragonWingY;
-      posZ = -142;
-      knightYaw = -0.68;
+      posY = ASTRAL.rearPlazaY;
+      posZ = 212;
+      knightYaw = Math.PI;
+    } else if (urlSpawn === 'astral-west') {
+      posX = -182;
+      posY = ASTRAL.wardPlazaY;
+      posZ = -34;
+      knightYaw = 0;
+    } else if (urlSpawn === 'astral-east') {
+      posX = 194;
+      posY = ASTRAL.wardPlazaY;
+      posZ = -36;
+      knightYaw = 0;
+    } else if (urlSpawn === 'astral-sprawl') {
+      posX = 0;
+      posY = ASTRAL.cityPlazaY;
+      posZ = -28;
+      knightYaw = 0;
+    } else if (
+      urlSpawn === 'astral-dragon' ||
+      urlSpawn === 'astral-bridge' ||
+      urlSpawn === 'astral-fortress'
+    ) {
+      posX = 44;
+      posY = ASTRAL.citadelTerraceY;
+      posZ = -155;
+      knightYaw = -Math.PI / 2;
     } else if (urlSpawn === 'astral-aqueduct') {
-      posX = 10;
-      posY = ASTRAL.aqueductMidY;
-      posZ = -252;
-      knightYaw = 0.36;
+      posX = 0;
+      posY = ASTRAL.aqueductDeckY;
+      posZ = -356;
+      knightYaw = 0;
+    } else if (urlSpawn === 'astral-shrine') {
+      posX = 0;
+      posY = ASTRAL.shrineHarborY;
+      posZ = -454;
+      knightYaw = 0;
+    } else if (urlSpawn === 'astral-abbey') {
+      posX = 0;
+      posY = ASTRAL.shrineSummitY;
+      posZ = -614;
+      knightYaw = 0;
     } else {
       posX = ASTRAL.spawnPos.x;
       posY = ASTRAL.spawnPos.y;
       posZ = ASTRAL.spawnPos.z;
+      knightYaw = 0;
     }
   }
   let velY = 0;
   let grounded = true;
   let walkPhase = 0;
+  let lastStepIndex = 0;
 
   // Dodge-roll state
   let isRolling = false;
   let rollTimer = 0;
-  const rollDuration = 0.56;
+  let rollLandPlayed = false;
+  const rollDuration = 0.55;
   let rollDirX = 0;
   let rollDirZ = -1;
+
+  // Apply immediate initial atmosphere so frame 1 matches the spawn biome exactly
+  {
+    const initAtmos = selectBiomeAtmosphere(
+      activeRealm,
+      posX,
+      posY,
+      posZ,
+      urlSpawn === 'aerial' && freeCam,
+    );
+    scene.background = new THREE.Color(initAtmos.fogHex);
+    (scene.fog as THREE.FogExp2).color.setHex(initAtmos.fogHex);
+    (scene.fog as THREE.FogExp2).density = initAtmos.fogDensity;
+    hemiLight.color.setHex(initAtmos.hemiSkyHex);
+    hemiLight.groundColor.setHex(initAtmos.hemiGroundHex);
+    hemiLight.intensity = initAtmos.hemiIntensity;
+    sunLight.color.setHex(initAtmos.sunHex);
+    sunLight.intensity = initAtmos.sunIntensity;
+    rimLight.color.setHex(initAtmos.rimHex);
+    rimLight.intensity = initAtmos.rimIntensity;
+    moteMat.color.setHex(initAtmos.particleHex);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      motePositions[i * 3] += posX;
+      motePositions[i * 3 + 1] += posY + 4;
+      motePositions[i * 3 + 2] += posZ;
+    }
+    (moteGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+  }
 
   // Camera orbit state
   let camYaw =
@@ -374,22 +551,44 @@ export function mountFantasyEngine(
     urlSpawn === 'hamlet' ||
     urlSpawn === 'snowpass'
       ? Math.PI / 2
-      : urlSpawn === 'astral-dragon'
-        ? -0.68
-        : urlSpawn === 'astral-aqueduct'
-          ? 0.36
+      : urlSpawn === 'astral-dragon' ||
+          urlSpawn === 'astral-bridge' ||
+          urlSpawn === 'astral-fortress'
+        ? -Math.PI / 2
+        : urlSpawn === 'astral-rear'
+          ? Math.PI
           : urlSpawn === 'alcove'
             ? -1.12
             : 0;
   let camPitch =
     urlSpawn === 'forecourt'
       ? -0.18
-      : urlSpawn === 'astral-dragon'
-        ? -0.06
-        : activeRealm === 'astral'
-          ? 0.10
-          : 0.12;
-  let camDist = urlSpawn === 'forecourt' ? 7.5 : activeRealm === 'astral' ? 7.2 : 5.8;
+      : urlSpawn === 'astral-dragon' ||
+          urlSpawn === 'astral-bridge' ||
+          urlSpawn === 'astral-fortress' ||
+          urlSpawn === 'astral-sprawl'
+        ? 0.08
+        : urlSpawn === 'astral'
+          ? 0.24
+          : urlSpawn === 'astral-shrine' || urlSpawn === 'astral-abbey' || urlSpawn === 'astral-aqueduct'
+            ? 0.1
+            : activeRealm === 'astral'
+              ? 0.14
+              : 0.12;
+  let camDist =
+    urlSpawn === 'forecourt'
+      ? 7.5
+      : urlSpawn === 'astral'
+        ? 6.4
+        : urlSpawn === 'astral-dragon' ||
+            urlSpawn === 'astral-bridge' ||
+            urlSpawn === 'astral-fortress'
+          ? 7.4
+          : urlSpawn === 'astral-shrine' || urlSpawn === 'astral-abbey' || urlSpawn === 'astral-aqueduct'
+            ? 8.4
+            : activeRealm === 'astral'
+              ? 7.2
+              : 5.8;
   let targetCamYaw = camYaw;
   let targetCamPitch = camPitch;
   let targetCamDist = camDist;
@@ -402,13 +601,14 @@ export function mountFantasyEngine(
   const camLookCurrent = new THREE.Vector3(posX, posY + (urlSpawn === 'forecourt' ? 8.5 : 1.95), posZ);
 
   // Free-roam camera coordinates
-  const freeCamPos = new THREE.Vector3(0, 12, 14);
-  let freeYaw = 0;
-  let freePitch = -0.1;
+  const freeCamPos =
+    urlSpawn === 'aerial' ? new THREE.Vector3(-42, 118, -305) : new THREE.Vector3(0, 12, 14);
+  let freeYaw = urlSpawn === 'aerial' ? 0.08 : 0;
+  let freePitch = urlSpawn === 'aerial' ? -0.35 : -0.1;
 
   // Zone & Prompt Tracking
   const computeZone = (): ZoneId =>
-    activeRealm === 'astral' ? getAstralZoneAtPosition(posZ, posY) : getZoneAtPosition(posZ, posY, posX);
+    activeRealm === 'astral' ? getAstralZoneAtPosition(posZ, posY, posX) : getZoneAtPosition(posZ, posY, posX);
   const computeNearBonfire = (): BonfireSite | null =>
     activeRealm === 'astral'
       ? findNearestAstralGrace(posX, posY, posZ)
@@ -433,6 +633,10 @@ export function mountFantasyEngine(
   let lastReportedGateOpened = gateOpened;
   let lastReportedResting = false;
   let lastReportedFreeCam = false;
+  let lastReportedPointerLocked = false;
+  let lastReportedBloomEnabled = bloomEnabled;
+  let lastReportedAudioMuted = audioEngine.isMuted();
+  let lastReportedAudioInit = audioEngine.isInitialized();
 
   if (isPlaying) {
     callbacks.onZoneEnter(currentZone);
@@ -447,15 +651,43 @@ export function mountFantasyEngine(
     gateOpened,
     isResting,
     freeCam,
+    pointerLocked: isPointerLocked,
+    bloomEnabled,
+    audioMuted: lastReportedAudioMuted,
+    audioInitialized: lastReportedAudioInit,
     zone: currentZone,
   });
 
   // Input State
   const keys = new Set<string>();
   const lastTapTime: Record<string, number> = {};
-  let isDragging = false;
-  let lastPointerX = 0;
-  let lastPointerY = 0;
+  const minCamPitch = (-12 * Math.PI) / 180;
+  const maxCamPitch = (72 * Math.PI) / 180;
+
+  const requestPointerLock = () => {
+    if (!isPlaying || isDead || gateOpening || portalTransitionActive) return;
+    try {
+      const dom = renderer.domElement as unknown as {
+        requestPointerLock?: () => Promise<void> | void;
+      };
+      const maybePromise = dom.requestPointerLock?.();
+      if (maybePromise && typeof (maybePromise as Promise<void>).catch === 'function') {
+        (maybePromise as Promise<void>).catch(() => {});
+      }
+    } catch {
+      // Ignore pointer lock rejection in restricted/headless contexts
+    }
+  };
+
+  const exitPointerLock = () => {
+    try {
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock?.();
+      }
+    } catch {
+      // Ignore
+    }
+  };
 
   const raycastFloorAt = (x: number, maxStartY: number, minEndY: number, z: number): number | null => {
     _rayOrigin.set(x, maxStartY, z);
@@ -483,12 +715,16 @@ export function mountFantasyEngine(
     }
     isRolling = true;
     rollTimer = 0;
+    rollLandPlayed = false;
+    audioEngine.playDodgeRollStart();
   };
 
   const syncPromptState = () => {
     const near = computeNearBonfire() !== null;
     const nearG = activeRealm === 'overworld' && findNearCatacombGate(posX, posY, posZ, gateOpened);
     const portal = computePortalState();
+    const audioMuted = audioEngine.isMuted();
+    const audioInit = audioEngine.isInitialized();
     if (
       activeRealm !== lastReportedRealm ||
       near !== lastNearBonfire ||
@@ -498,7 +734,11 @@ export function mountFantasyEngine(
       gateOpening !== lastReportedGateOpening ||
       gateOpened !== lastReportedGateOpened ||
       isResting !== lastReportedResting ||
-      freeCam !== lastReportedFreeCam
+      freeCam !== lastReportedFreeCam ||
+      isPointerLocked !== lastReportedPointerLocked ||
+      bloomEnabled !== lastReportedBloomEnabled ||
+      audioMuted !== lastReportedAudioMuted ||
+      audioInit !== lastReportedAudioInit
     ) {
       lastReportedRealm = activeRealm;
       lastNearBonfire = near;
@@ -508,6 +748,10 @@ export function mountFantasyEngine(
       lastReportedGateOpened = gateOpened;
       lastReportedResting = isResting;
       lastReportedFreeCam = freeCam;
+      lastReportedPointerLocked = isPointerLocked;
+      lastReportedBloomEnabled = bloomEnabled;
+      lastReportedAudioMuted = audioMuted;
+      lastReportedAudioInit = audioInit;
       callbacks.onPromptStateChange({
         realm: activeRealm,
         nearBonfire: near,
@@ -518,6 +762,10 @@ export function mountFantasyEngine(
         gateOpened,
         isResting,
         freeCam,
+        pointerLocked: isPointerLocked,
+        bloomEnabled,
+        audioMuted,
+        audioInitialized: audioInit,
         zone: currentZone,
       });
     }
@@ -534,7 +782,7 @@ export function mountFantasyEngine(
     if (target === 'astral') {
       world.overworldGroup.visible = false;
       astralCapital.group.visible = true;
-      camera.far = 3500;
+      camera.far = 5600;
       camera.updateProjectionMatrix();
 
       posX = ASTRAL.spawnPos.x;
@@ -543,25 +791,27 @@ export function mountFantasyEngine(
       knightYaw = 0;
       camYaw = 0;
       targetCamYaw = 0;
-      camPitch = 0.14;
-      targetCamPitch = 0.14;
-      camDist = 6.8;
-      targetCamDist = 6.8;
+      camPitch = 0.24;
+      targetCamPitch = 0.24;
+      camDist = 6.4;
+      targetCamDist = 6.4;
 
-      scene.background = _astralFogCol.clone();
-      (scene.fog as THREE.FogExp2).color.copy(_astralFogCol);
-      (scene.fog as THREE.FogExp2).density = 0.00115;
-      hemiLight.color.setHex(0x8ea4e8);
-      hemiLight.groundColor.setHex(0x4e3c2c);
-      hemiLight.intensity = 1.3;
-      sunLight.color.setHex(0xffce84);
-      sunLight.intensity = 2.35;
-      rimLight.color.setHex(0x6f8cff);
-      rimLight.intensity = 1.15;
+      const aPreset = BIOME_ATMOSPHERES.astral;
+      scene.background = new THREE.Color(aPreset.fogHex);
+      (scene.fog as THREE.FogExp2).color.setHex(aPreset.fogHex);
+      (scene.fog as THREE.FogExp2).density = aPreset.fogDensity;
+      hemiLight.color.setHex(aPreset.hemiSkyHex);
+      hemiLight.groundColor.setHex(aPreset.hemiGroundHex);
+      hemiLight.intensity = aPreset.hemiIntensity;
+      sunLight.color.setHex(aPreset.sunHex);
+      sunLight.intensity = aPreset.sunIntensity;
+      rimLight.color.setHex(aPreset.rimHex);
+      rimLight.intensity = aPreset.rimIntensity;
+      moteMat.color.setHex(aPreset.particleHex);
     } else {
       astralCapital.group.visible = false;
       world.overworldGroup.visible = true;
-      camera.far = 1700;
+      camera.far = 2600;
       camera.updateProjectionMatrix();
 
       gateOpened = true;
@@ -576,16 +826,18 @@ export function mountFantasyEngine(
       camDist = 5.4;
       targetCamDist = 5.4;
 
-      scene.background = _cloisterFogCol.clone();
-      (scene.fog as THREE.FogExp2).color.copy(_cloisterFogCol);
-      (scene.fog as THREE.FogExp2).density = 0.0085;
-      hemiLight.color.setHex(0x7e97bd);
-      hemiLight.groundColor.setHex(0x3b2d22);
-      hemiLight.intensity = 0.85;
-      sunLight.color.setHex(0xffb969);
-      sunLight.intensity = 1.25;
-      rimLight.color.setHex(0x9fb5d9);
-      rimLight.intensity = 0.65;
+      const cPreset = BIOME_ATMOSPHERES.cloister;
+      scene.background = new THREE.Color(cPreset.fogHex);
+      (scene.fog as THREE.FogExp2).color.setHex(cPreset.fogHex);
+      (scene.fog as THREE.FogExp2).density = cPreset.fogDensity;
+      hemiLight.color.setHex(cPreset.hemiSkyHex);
+      hemiLight.groundColor.setHex(cPreset.hemiGroundHex);
+      hemiLight.intensity = cPreset.hemiIntensity;
+      sunLight.color.setHex(cPreset.sunHex);
+      sunLight.intensity = cPreset.sunIntensity;
+      rimLight.color.setHex(cPreset.rimHex);
+      rimLight.intensity = cPreset.rimIntensity;
+      moteMat.color.setHex(cPreset.particleHex);
     }
 
     const horizDist = Math.cos(camPitch) * camDist;
@@ -610,14 +862,38 @@ export function mountFantasyEngine(
     keys.add(code);
 
     if (!isPlaying || isDead) return;
+    audioEngine.unlock();
 
     if (!wasDown) {
+      if (code === 'KeyB') {
+        bloomEnabled = !bloomEnabled;
+        bloomPass.enabled = bloomEnabled;
+        syncPromptState();
+        return;
+      }
+
+      if (code === 'KeyM') {
+        audioEngine.setMuted(!audioEngine.isMuted());
+        syncPromptState();
+        return;
+      }
+
       if (code === 'KeyC' && !gateOpening && !portalTransitionActive) {
         freeCam = !freeCam;
         if (freeCam) {
           freeCamPos.copy(camera.position);
           freeYaw = camYaw;
           freePitch = -camPitch * 0.6;
+        }
+        syncPromptState();
+        return;
+      }
+
+      if (code === 'KeyY' && !gateOpening && !portalTransitionActive) {
+        if (document.pointerLockElement === renderer.domElement) {
+          exitPointerLock();
+        } else {
+          requestPointerLock();
         }
         syncPromptState();
         return;
@@ -655,6 +931,7 @@ export function mountFantasyEngine(
           isRolling = false;
           isResting = false;
           keys.clear();
+          audioEngine.playPortalTransition(portalTransitionTarget);
           callbacks.onPortalFadeChange(1);
           return;
         }
@@ -676,6 +953,7 @@ export function mountFantasyEngine(
         isResting = false;
         velY = 8.4;
         grounded = false;
+        audioEngine.playJump();
         syncPromptState();
         return;
       }
@@ -752,31 +1030,38 @@ export function mountFantasyEngine(
     keys.delete(e.code);
   };
 
-  const onPointerDown = (e: PointerEvent) => {
-    if (!isPlaying || isDead) return;
-    isDragging = true;
-    lastPointerX = e.clientX;
-    lastPointerY = e.clientY;
-  };
-
-  const onPointerMove = (e: PointerEvent) => {
-    if (!isDragging || !isPlaying || isDead) return;
-    const dx = e.clientX - lastPointerX;
-    const dy = e.clientY - lastPointerY;
-    lastPointerX = e.clientX;
-    lastPointerY = e.clientY;
-
-    if (freeCam) {
-      freeYaw -= dx * 0.0045;
-      freePitch = THREE.MathUtils.clamp(freePitch - dy * 0.0045, -1.35, 1.35);
-    } else {
-      targetCamYaw -= dx * 0.0055;
-      targetCamPitch = THREE.MathUtils.clamp(targetCamPitch + dy * 0.0045, -0.25, 1.15);
+  const onCanvasClick = () => {
+    audioEngine.unlock();
+    syncPromptState();
+    if (!isPlaying || isDead || gateOpening || portalTransitionActive) return;
+    if (document.pointerLockElement !== renderer.domElement) {
+      requestPointerLock();
     }
   };
 
-  const onPointerUp = () => {
-    isDragging = false;
+  const onMouseMove = (e: MouseEvent) => {
+    if (!isPlaying || isDead || gateOpening || portalTransitionActive) return;
+    if (document.pointerLockElement !== renderer.domElement) return;
+    const dx = e.movementX || 0;
+    const dy = e.movementY || 0;
+
+    if (freeCam) {
+      freeYaw -= dx * 0.0024;
+      freePitch = THREE.MathUtils.clamp(freePitch - dy * 0.0022, -1.35, 1.35);
+    } else {
+      targetCamYaw -= dx * 0.0026;
+      targetCamPitch = THREE.MathUtils.clamp(targetCamPitch + dy * 0.0022, minCamPitch, maxCamPitch);
+    }
+  };
+
+  const onPointerLockChange = () => {
+    isPointerLocked = document.pointerLockElement === renderer.domElement;
+    syncPromptState();
+  };
+
+  const onPointerLockError = () => {
+    isPointerLocked = false;
+    syncPromptState();
   };
 
   const onWheel = (e: WheelEvent) => {
@@ -786,7 +1071,7 @@ export function mountFantasyEngine(
 
   const onBlur = () => {
     keys.clear();
-    isDragging = false;
+    exitPointerLock();
   };
 
   const onResize = () => {
@@ -795,15 +1080,23 @@ export function mountFantasyEngine(
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    composer.setSize(w, h);
+    bloomPass.resolution.set(w, h);
+    if (!isSoftwareGl && bloomEnabled) {
+      composer.render();
+    } else {
+      renderer.render(scene, camera);
+    }
   };
 
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onBlur);
   window.addEventListener('resize', onResize);
-  renderer.domElement.addEventListener('pointerdown', onPointerDown);
-  window.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
+  renderer.domElement.addEventListener('click', onCanvasClick);
+  window.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('pointerlockchange', onPointerLockChange);
+  document.addEventListener('pointerlockerror', onPointerLockError);
   renderer.domElement.addEventListener('wheel', onWheel, { passive: true });
 
   if (!isSoftwareGl) {
@@ -815,7 +1108,7 @@ export function mountFantasyEngine(
   let lastTime = performance.now();
   let elapsed = 0;
   let tickCount = 0;
-  let lastAcademyScale: number = ACADEMY.scaleFar;
+  let lastAcademyScale = 1.0;
 
   function afterDraw(cb: () => void) {
     const gl = renderer.getContext() as WebGL2RenderingContext | null;
@@ -895,6 +1188,10 @@ export function mountFantasyEngine(
       gateOpened,
       isResting: false,
       freeCam,
+      pointerLocked: isPointerLocked,
+      bloomEnabled,
+      audioMuted: audioEngine.isMuted(),
+      audioInitialized: audioEngine.isInitialized(),
       zone: currentZone,
     });
   }
@@ -917,16 +1214,10 @@ export function mountFantasyEngine(
     if (activeRealm === 'astral') {
       astralCapital.update(elapsed, dt, freeCam ? freeCamPos.x : posX, posY, freeCam ? freeCamPos.z : posZ);
     } else {
-      // Dynamic forced-perspective scale illusion for the Raya Lucaria-inspired Academy Citadel:
-      // Towers at 2.6x from >=220m away and smoothly settles to true 1.0x proportions by <=45m.
-      const viewerX = freeCam ? freeCamPos.x : posX;
-      const viewerZ = freeCam ? freeCamPos.z : posZ;
-      const distToAcademy =
-        viewerZ <= ACADEMY.castleBaseZ && viewerZ >= -980 && Math.abs(viewerX) < 110
-          ? 0
-          : Math.hypot(viewerX - ACADEMY.castleBaseX, viewerZ - ACADEMY.castleBaseZ);
-      lastAcademyScale = computeAcademyScale(distToAcademy);
-      world.academyCastleGroup.scale.setScalar(lastAcademyScale);
+      // Keep the expanded colossal Sunken Arcane Academy at true 1.0x world scale
+      // so West Cloister stairs, East Harbor sky-bridge, and multi-tier ramparts align seamlessly.
+      lastAcademyScale = 1.0;
+      world.academyCastleGroup.scale.setScalar(1.0);
       world.academyCastleGroup.updateMatrixWorld();
 
       world.update(elapsed, dt, posZ, posY, posX);
@@ -936,6 +1227,8 @@ export function mountFantasyEngine(
     restBlend = THREE.MathUtils.damp(restBlend, isResting ? 1 : 0, 7.5, dt);
 
     let horizontalSpeed = 0;
+    const strafeDot = 0;
+    const forwardDot = 1;
     const isSprinting = (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !isResting;
 
     if (isPlaying && isDead) {
@@ -1042,6 +1335,10 @@ export function mountFantasyEngine(
 
       if (isRolling) {
         rollTimer += dt;
+        if (!rollLandPlayed && rollTimer >= 0.43) {
+          rollLandPlayed = true;
+          audioEngine.playDodgeRollLand();
+        }
         const speed = 11.2 * (1 - (rollTimer / rollDuration) * 0.35);
         const resolved =
           activeRealm === 'astral'
@@ -1085,7 +1382,7 @@ export function mountFantasyEngine(
         posZ = resolved.z;
         horizontalSpeed = moveSpeed;
 
-        // Smooth character rotation toward movement direction
+        // Smooth character rotation toward camera-relative movement direction
         const targetYaw = Math.atan2(-_moveDir.x, -_moveDir.z);
         let diff = targetYaw - knightYaw;
         while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1094,6 +1391,8 @@ export function mountFantasyEngine(
       }
 
       // Swept Continuous 3D Raycast + Analytical Multi-Tier Floor Collision (100% solid staircases!)
+      const wasGrounded = grounded;
+      const preImpactVelY = velY;
       const rayFloor = raycastFloorAt(
         posX,
         Math.max(prevY, posY) + 1.15,
@@ -1128,6 +1427,10 @@ export function mountFantasyEngine(
       velY = vStep.velY;
       grounded = vStep.grounded;
 
+      if (!wasGrounded && grounded && !isRolling) {
+        audioEngine.playLand(preImpactVelY);
+      }
+
       // Lethal Fall Detection
       const fell = activeRealm === 'astral' ? isAstralLethalFall(posY) : isLethalFall(posY);
       if (fell) {
@@ -1136,11 +1439,17 @@ export function mountFantasyEngine(
         isRolling = false;
         isResting = false;
         keys.clear();
+        exitPointerLock();
         callbacks.onDeathStateChange(true);
       }
 
       if (horizontalSpeed > 0.2 && grounded && !isRolling) {
-        walkPhase += dt * (isSprinting ? 12.5 : 8.2);
+        walkPhase += dt * (isSprinting ? 12.5 : 6.5);
+        const stepIdx = Math.floor(walkPhase / Math.PI);
+        if (stepIdx !== lastStepIndex) {
+          lastStepIndex = stepIdx;
+          audioEngine.playFootstep(isSprinting);
+        }
       }
 
       // Check Zone Discovery, Bonfire, and Portal proximity
@@ -1197,8 +1506,20 @@ export function mountFantasyEngine(
           activeRealm === 'astral'
             ? sampleAstralFloorHeight(_desiredCamPos.x, posY + 1.5, _desiredCamPos.z, 1.5)
             : sampleFloorHeight(_desiredCamPos.x, posY + (inIndoor ? 3.2 : 1.2), _desiredCamPos.z, 0.6);
-        if (camGround !== null && _desiredCamPos.y < camGround + 0.85) {
-          _desiredCamPos.y = camGround + 0.85;
+        const waterSurfaceY =
+          activeRealm === 'astral'
+            ? ASTRAL.waterY
+            : posZ <= -584.0 && posX > -155.0
+              ? ACADEMY.lakeWaterY
+              : posZ <= -538.0 && posZ > -584.0
+                ? HINTERLAND.riverWaterY
+                : -999;
+        const minCamY = Math.max(
+          camGround !== null ? camGround + 0.85 : -999,
+          waterSurfaceY > -900 ? waterSurfaceY + 0.7 : -999,
+        );
+        if (minCamY > -900 && _desiredCamPos.y < minCamY) {
+          _desiredCamPos.y = minCamY;
         }
 
         // Pull camera cleanly inside tunnel & Citadel Spiral Tower vaults so walls/ceilings never clip view
@@ -1275,6 +1596,7 @@ export function mountFantasyEngine(
 
     animateKnight(knight, {
       speed: horizontalSpeed,
+      velY,
       grounded,
       isSprinting,
       isRolling,
@@ -1283,76 +1605,92 @@ export function mountFantasyEngine(
       restBlend,
       isPushingGate: gateOpening,
       pushProgress: gateOpening ? Math.min(1, gateAnimTimer / gateAnimDuration) : 0,
+      strafeDot,
+      forwardDot,
       walkPhase,
       elapsed,
+      dt,
     });
 
-    // Smooth atmospheric fog & sky/lighting shift across realms & zones
-    let targetFogDensity = 0.0042;
-    let targetHemi = 1.05;
-    let targetSun = 2.55;
-    if (activeRealm === 'astral') {
-      _targetFogCol.copy(_astralFogCol);
-      targetFogDensity = 0.00115;
-      targetHemi = 1.3;
-      targetSun = 2.35;
-    } else if (posZ <= -274.0 && (posY < -0.5 || posZ <= -584.0)) {
-      if (posX <= -205.0) {
-        _targetFogCol.copy(_snowPassFogCol);
-        targetFogDensity = 0.0165;
-        targetHemi = 1.05;
-        targetSun = 1.15;
-      } else if (posX <= -145.0) {
-        _targetFogCol.copy(_hamletFogCol);
-        targetFogDensity = 0.0145;
-        targetHemi = 0.88;
-        targetSun = 0.85;
-      } else if (posZ <= -584.0) {
-        _targetFogCol.copy(_lakeFogCol);
-        targetFogDensity = 0.0034;
-        targetHemi = 0.84;
-        targetSun = 1.48;
-      } else if (posZ <= -525.0) {
-        _targetFogCol.copy(_hinterlandFogCol).lerp(_lakeFogCol, 0.45);
-        targetFogDensity = 0.0056;
-        targetHemi = 0.9;
-        targetSun = 0.9;
-      } else {
-        _targetFogCol.copy(_hinterlandFogCol);
-        targetFogDensity = 0.0135;
-        targetHemi = 0.88;
-        targetSun = 0.95;
-      }
-    } else if (posZ <= -224.0 && posZ > -274.0 && posY <= 9.5) {
-      _targetFogCol.copy(_cloisterFogCol);
-      targetFogDensity = 0.0085;
-      targetHemi = 0.65;
-      targetSun = 0.45;
-    } else {
-      _targetFogCol.copy(_twilightFogCol);
-    }
+    // Smooth atmospheric fog, hemisphere/sun/rim tints & single-draw-call motes
+    const preset = selectBiomeAtmosphere(
+      activeRealm,
+      posX,
+      posY,
+      posZ,
+      urlSpawn === 'aerial' && freeCam,
+    );
+    _targetFogCol.setHex(preset.fogHex);
+    _targetHemiSkyCol.setHex(preset.hemiSkyHex);
+    _targetHemiGroundCol.setHex(preset.hemiGroundHex);
+    _targetSunCol.setHex(preset.sunHex);
+    _targetRimCol.setHex(preset.rimHex);
+    _targetParticleCol.setHex(preset.particleHex);
+
     const atmosLerp = 1 - Math.exp(-3.2 * dt);
     const fogExp = scene.fog as THREE.FogExp2;
     fogExp.color.lerp(_targetFogCol, atmosLerp);
     if (scene.background instanceof THREE.Color) {
       scene.background.lerp(_targetFogCol, atmosLerp);
     }
-    fogExp.density = THREE.MathUtils.damp(fogExp.density, targetFogDensity, 3.2, dt);
-    hemiLight.intensity = THREE.MathUtils.damp(hemiLight.intensity, targetHemi, 3.2, dt);
-    sunLight.intensity = THREE.MathUtils.damp(sunLight.intensity, targetSun, 3.2, dt);
+    fogExp.density = THREE.MathUtils.damp(fogExp.density, preset.fogDensity, 3.2, dt);
 
-    // Keep directional shadow frustum centered near player/midground
+    hemiLight.color.lerp(_targetHemiSkyCol, atmosLerp);
+    hemiLight.groundColor.lerp(_targetHemiGroundCol, atmosLerp);
+    hemiLight.intensity = THREE.MathUtils.damp(hemiLight.intensity, preset.hemiIntensity, 3.2, dt);
+
+    sunLight.color.lerp(_targetSunCol, atmosLerp);
+    sunLight.intensity = THREE.MathUtils.damp(sunLight.intensity, preset.sunIntensity, 3.2, dt);
+
+    rimLight.color.lerp(_targetRimCol, atmosLerp);
+    rimLight.intensity = THREE.MathUtils.damp(rimLight.intensity, preset.rimIntensity, 3.2, dt);
+
+    moteMat.color.lerp(_targetParticleCol, atmosLerp);
+
+    // Update 750 drifting atmospheric motes in a 45m radius around the knight
+    const mAttr = moteGeo.attributes.position as THREE.BufferAttribute;
+    const moteCenterY = posY + 4;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const seed = moteSeeds[i];
+      let mx = mAttr.getX(i) + Math.sin(elapsed * 0.45 + seed) * 0.65 * dt;
+      let my = mAttr.getY(i) + (0.28 + Math.cos(elapsed * 0.6 + seed * 1.3) * 0.22) * dt;
+      let mz = mAttr.getZ(i) + Math.cos(elapsed * 0.38 + seed * 0.7) * 0.65 * dt;
+
+      mx = wrapParticleAxis(mx, posX, PARTICLE_RADIUS);
+      mz = wrapParticleAxis(mz, posZ, PARTICLE_RADIUS);
+      if (my > moteCenterY + 26) my -= 32;
+      else if (my < moteCenterY - 8) my += 32;
+
+      mAttr.setXYZ(i, mx, my, mz);
+    }
+    mAttr.needsUpdate = true;
+
+    // Tight 34m x 34m directional shadow frustum dynamically tracking the knight every frame
+    sunLight.target.position.set(posX, posY, posZ);
     if (activeRealm === 'astral') {
-      sunLight.target.position.set(posX, posY - 12, posZ - 65);
-      sunLight.position.set(posX + 120, posY + 110, posZ + 90);
+      sunLight.position.set(posX + 42, posY + 46, posZ + 32);
+      rimLight.position.set(posX - 48, posY + 28, posZ - 38);
     } else if (posZ <= -584.0 && posX > -145.0) {
-      sunLight.target.position.set(posX, posY + 8, posZ - 45);
-      sunLight.position.set(posX - 95, posY + 78, sunLight.target.position.z + 85);
+      sunLight.position.set(posX - 38, posY + 44, posZ + 36);
+      rimLight.position.set(posX + 44, posY + 26, posZ - 32);
     } else {
-      sunLight.target.position.set(posX, posY, posZ - 35);
-      sunLight.position.set(posX + 85, posY + 68, sunLight.target.position.z - 80);
+      sunLight.position.set(posX + 40, posY + 44, posZ - 36);
+      rimLight.position.set(posX - 44, posY + 28, posZ + 38);
     }
     sunLight.target.updateMatrixWorld();
+
+    // Update continuous procedural audio landscape
+    audioEngine.update({
+      elapsed,
+      dt,
+      realm: activeRealm,
+      zone: currentZone,
+      speed: horizontalSpeed,
+      grounded,
+      elevationY: posY,
+      isSprinting,
+      isResting,
+    });
   }
 
   function tick() {
@@ -1367,7 +1705,12 @@ export function mountFantasyEngine(
       elapsed += subDt;
       stepSimulation(subDt);
     }
-    renderer.render(scene, camera);
+
+    if (!isSoftwareGl && bloomEnabled) {
+      composer.render();
+    } else {
+      renderer.render(scene, camera);
+    }
     tickCount++;
 
     if (isSoftwareGl) {
@@ -1390,6 +1733,20 @@ export function mountFantasyEngine(
     gateOpened,
     isDead,
     freeCam,
+    pointerLocked: isPointerLocked,
+    bloomEnabled,
+    audioMuted: audioEngine.isMuted(),
+    audioInitialized: audioEngine.isInitialized(),
+    particleCount: PARTICLE_COUNT,
+    knightYaw: Number(knightYaw.toFixed(4)),
+    orbitYaw: Number(camYaw.toFixed(4)),
+    targetCamYaw: Number(targetCamYaw.toFixed(4)),
+    camPitch: Number(camPitch.toFixed(4)),
+    targetCamPitch: Number(targetCamPitch.toFixed(4)),
+    camX: Number(camera.position.x.toFixed(3)),
+    camY: Number(camera.position.y.toFixed(3)),
+    camZ: Number(camera.position.z.toFixed(3)),
+    camYaw: Number(camera.rotation.y.toFixed(4)),
     cameraFar: camera.far,
     overworldVisible: world.overworldGroup.visible,
     astralVisible: astralCapital.group.visible,
@@ -1403,11 +1760,15 @@ export function mountFantasyEngine(
     setPlaying: (playing: boolean) => {
       if (playing && !isPlaying) {
         isPlaying = true;
+        audioEngine.unlock();
         currentZone = computeZone();
         callbacks.onZoneEnter(currentZone);
         syncPromptState();
       } else {
         isPlaying = playing;
+        if (!playing) {
+          exitPointerLock();
+        }
       }
     },
     toggleFreeCam: () => {
@@ -1420,8 +1781,29 @@ export function mountFantasyEngine(
       }
       syncPromptState();
     },
+    togglePointerLock: () => {
+      if (!isPlaying || isDead || portalTransitionActive || gateOpening) return;
+      audioEngine.unlock();
+      if (document.pointerLockElement === renderer.domElement) {
+        exitPointerLock();
+      } else {
+        requestPointerLock();
+      }
+      syncPromptState();
+    },
+    toggleBloom: () => {
+      bloomEnabled = !bloomEnabled;
+      bloomPass.enabled = bloomEnabled;
+      syncPromptState();
+    },
+    toggleAudioMute: () => {
+      audioEngine.unlock();
+      audioEngine.setMuted(!audioEngine.isMuted());
+      syncPromptState();
+    },
     dispose: () => {
       disposed = true;
+      exitPointerLock();
       delete (window as unknown as Record<string, unknown>).__playerState;
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
@@ -1429,12 +1811,23 @@ export function mountFantasyEngine(
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
       window.removeEventListener('resize', onResize);
-      renderer.domElement.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
+      renderer.domElement.removeEventListener('click', onCanvasClick);
+      window.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('pointerlockchange', onPointerLockChange);
+      document.removeEventListener('pointerlockerror', onPointerLockError);
       renderer.domElement.removeEventListener('wheel', onWheel);
+      audioEngine.dispose();
+      moteGeo.dispose();
+      moteMat.dispose();
+      moteTex.dispose();
+      composer.dispose();
+      composerTarget.dispose();
+      bloomPass.dispose();
+      outputPass.dispose();
+      renderPass.dispose();
       astralCapital.dispose();
       world.dispose();
+      knight.dispose();
       textures.dispose();
       envTex.dispose();
       renderer.dispose();
